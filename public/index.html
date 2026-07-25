@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KAN Membership Tracker</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ======================= LOGIN SCREEN ======================= -->
+<div id="loginScreen" class="auth-screen">
+  <div class="auth-card">
+    <h1>KAN Membership Tracker</h1>
+    <p class="hint">Enter your email and we'll send you a one-time login link. No password to remember.</p>
+    <form id="loginForm">
+      <input type="email" id="loginEmail" placeholder="you@example.com" required />
+      <button type="submit" class="btn btn-primary">Send me a login link</button>
+    </form>
+    <p id="loginStatus" class="hint"></p>
+  </div>
+</div>
+
+<!-- ================= "NOT ON THE LIST" SCREEN ================= -->
+<div id="noAccessScreen" class="auth-screen" style="display:none;">
+  <div class="auth-card">
+    <h1>Access needed</h1>
+    <p>You're signed in as <strong id="noAccessEmail"></strong>, but this account isn't authorized yet.</p>
+    <p class="hint">Ask an existing admin to add your email from the app's Manage Access screen, then reload this page.</p>
+    <button id="btnSignOutNoAccess" class="btn btn-ghost">Sign out</button>
+  </div>
+</div>
+
+<!-- ============================ APP ============================= -->
+<div id="appRoot" style="display:none;">
+
+<header class="topbar">
+  <div class="topbar-title">
+    <h1>KAN Membership Tracker</h1>
+    <p>Kerala Association of Nashville — member &amp; renewal management</p>
+  </div>
+  <div class="topbar-actions">
+    <span class="whoami" id="whoamiLabel"></span>
+    <button id="btnManageAccess" class="btn btn-ghost" style="display:none;">Manage Access</button>
+    <button id="btnSendReminders" class="btn btn-secondary">✉ Send Reminders</button>
+    <button id="btnAddMember" class="btn btn-primary">+ Add Member</button>
+    <button id="btnSignOut" class="btn btn-ghost">Sign out</button>
+  </div>
+</header>
+
+<section class="stats" id="statsRow">
+  <div class="stat-card stat-total">
+    <div class="stat-value" id="statTotal">0</div>
+    <div class="stat-label">Total Members</div>
+  </div>
+  <div class="stat-card stat-active">
+    <div class="stat-value" id="statActive">0</div>
+    <div class="stat-label">Active</div>
+  </div>
+  <div class="stat-card stat-renew">
+    <div class="stat-value" id="statRenew">0</div>
+    <div class="stat-label">Renewal Due</div>
+  </div>
+  <div class="stat-card stat-lapsed">
+    <div class="stat-value" id="statLapsed">0</div>
+    <div class="stat-label">Long Lapsed</div>
+  </div>
+</section>
+
+<section class="chip-section">
+  <div class="chip-group">
+    <span class="chip-group-label">By status:</span>
+    <div class="chip-row" id="statusChips"></div>
+  </div>
+  <div class="chip-group">
+    <span class="chip-group-label">Contact info:</span>
+    <div class="chip-row" id="contactChips"></div>
+  </div>
+</section>
+
+<section class="toolbar">
+  <div class="toolbar-row">
+    <input type="text" id="searchBox" placeholder="Search by name, email, phone, address, notes..." />
+    <button id="btnClearFilters" class="btn btn-ghost">Clear all filters</button>
+  </div>
+
+  <div class="toolbar-row toolbar-row-downloads">
+    <span class="visible-count" id="visibleCount">Showing 0 of 0 members</span>
+    <div class="download-actions">
+      <button id="btnDownloadFiltered" class="btn btn-outline">⬇ Download current view (Excel)</button>
+      <button id="btnDownloadNotRenewed" class="btn btn-outline">⬇ Download not-renewed list (Excel)</button>
+      <button id="btnDownloadFull" class="btn btn-secondary">⬇ Download full report (Excel, 3 tabs)</button>
+      <button id="btnExportJson" class="btn btn-ghost">Export JSON (backup)</button>
+    </div>
+  </div>
+</section>
+
+<section class="table-wrap">
+  <table id="membersTable">
+    <thead>
+      <tr>
+        <th data-sort="name">Name</th>
+        <th data-sort="category">Category</th>
+        <th data-sort="status">Status</th>
+        <th data-sort="type">Type</th>
+        <th data-sort="membershipPaymentDate">Last Payment</th>
+        <th data-sort="yearRenewed">Year Renewed</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>Address / Native Place</th>
+        <th>Household</th>
+        <th>Notes</th>
+        <th>2026 Event</th>
+        <th>Last Reminder</th>
+        <th>Actions</th>
+      </tr>
+      <tr class="filter-row">
+        <th><input type="text" id="colf-name" class="col-filter" placeholder="Filter name…" /></th>
+        <th>
+          <select id="colf-category" class="col-filter">
+            <option value="">All</option>
+            <option value="Active">Active</option>
+            <option value="Renewal Due">Renewal Due</option>
+            <option value="Long Lapsed">Long Lapsed</option>
+          </select>
+        </th>
+        <th>
+          <select id="colf-status" class="col-filter">
+            <option value="">All</option>
+            <option value="Life">Life</option>
+            <option value="Annual">Annual</option>
+            <option value="Biennial">Biennial</option>
+            <option value="Expired">Expired</option>
+            <option value="Lapsed">Lapsed</option>
+          </select>
+        </th>
+        <th>
+          <select id="colf-type" class="col-filter">
+            <option value="">All</option>
+            <option value="Family">Family</option>
+            <option value="Single">Single</option>
+          </select>
+        </th>
+        <th><input type="text" id="colf-payment" class="col-filter" placeholder="e.g. 2024…" /></th>
+        <th><input type="text" id="colf-yearRenewed" class="col-filter" placeholder="e.g. 2024…" /></th>
+        <th>
+          <select id="colf-phone" class="col-filter">
+            <option value="">Any</option>
+            <option value="has">Has phone</option>
+            <option value="missing">No phone</option>
+          </select>
+        </th>
+        <th>
+          <select id="colf-email" class="col-filter">
+            <option value="">Any</option>
+            <option value="has">Has email</option>
+            <option value="missing">No email</option>
+          </select>
+        </th>
+        <th><input type="text" id="colf-address" class="col-filter" placeholder="Filter address…" /></th>
+        <th><input type="text" id="colf-household" class="col-filter" placeholder="Filter household…" /></th>
+        <th><input type="text" id="colf-notes" class="col-filter" placeholder="Filter notes…" /></th>
+        <th>
+          <select id="colf-event" class="col-filter">
+            <option value="">Any</option>
+            <option value="yes">Attended</option>
+            <option value="no">Did not attend</option>
+          </select>
+        </th>
+        <th>
+          <select id="colf-reminder" class="col-filter">
+            <option value="">Any</option>
+            <option value="never">Never reminded</option>
+            <option value="sent">Previously reminded</option>
+            <option value="contact-phone">Renewal outreach: missing phone</option>
+            <option value="contact-email">Renewal outreach: missing email</option>
+            <option value="update-address">Asked to update: address</option>
+            <option value="update-phone">Asked to update: phone</option>
+            <option value="update-email">Asked to update: email</option>
+          </select>
+        </th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="membersTbody"></tbody>
+  </table>
+  <div id="emptyState" class="empty-state" style="display:none;">No members match your filters.</div>
+</section>
+
+<footer class="app-footer">
+  <p>Data lives in a shared Supabase database — everyone with access sees the same live data. Use "Export JSON" regularly to keep an outside backup.</p>
+</footer>
+
+<!-- Add / Edit Modal -->
+<div id="memberModal" class="modal-overlay" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Member</h2>
+      <button id="modalClose" class="modal-close">&times;</button>
+    </div>
+    <form id="memberForm" class="modal-body">
+      <input type="hidden" id="fieldId" />
+      <div class="form-grid">
+        <label>Name *<input type="text" id="fieldName" required /></label>
+
+        <label>Status *
+          <select id="fieldStatus" required>
+            <option value="Life">Life</option>
+            <option value="Annual">Annual</option>
+            <option value="Biennial">Biennial</option>
+            <option value="Expired">Expired</option>
+            <option value="Lapsed">Lapsed</option>
+          </select>
+        </label>
+
+        <label>Household Type
+          <select id="fieldType">
+            <option value="Family">Family</option>
+            <option value="Single">Single</option>
+          </select>
+        </label>
+
+        <label>Last Payment Date<input type="date" id="fieldPaymentDate" /></label>
+        <label>Year Renewed<input type="number" id="fieldYearRenewed" min="1900" max="2100" /></label>
+        <label>Phone<input type="text" id="fieldPhone" /></label>
+        <label>Email<input type="email" id="fieldEmail" /></label>
+        <label class="span-2">Address<input type="text" id="fieldAddress" /></label>
+        <label>Native Place<input type="text" id="fieldNativePlace" /></label>
+        <label>Spouse Name<input type="text" id="fieldSpouseName" /></label>
+        <label class="span-2">Children's Names<input type="text" id="fieldChildrenNames" /></label>
+        <label class="span-2">Notes / Remarks<input type="text" id="fieldNotes" /></label>
+
+        <label>Attended 2026 New Year Event?
+          <select id="fieldAttended2026">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </label>
+        <label>2026 Event Payment ($)<input type="number" id="fieldEventPayment" min="0" step="1" /></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btnDeleteMember" class="btn btn-ghost btn-danger-text" style="display:none;">Delete Member</button>
+        <div class="modal-actions-right">
+          <button type="button" id="btnCancelModal" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Send Reminders Modal -->
+<div id="reminderModal" class="modal-overlay" style="display:none;">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2>Send Reminders</h2>
+      <button id="reminderModalClose" class="modal-close">&times;</button>
+    </div>
+
+    <div class="modal-body" id="reminderStepSelect">
+      <p class="hint">
+        Email sends immediately through the KAN mailer (from manish.ravikumar@gmail.com, cc'd to kantreasurer@gmail.com) — no extra step.
+        Text messages still open your phone/Messages app for you to send yourself — there's no free way to send arbitrary SMS automatically.
+      </p>
+
+      <div class="reminder-row">
+        <div class="reminder-channel">
+          <label><input type="radio" name="reminderChannel" value="email" checked /> Email</label>
+          <label><input type="radio" name="reminderChannel" value="sms" /> Text message (SMS)</label>
+        </div>
+      </div>
+
+      <p class="reminder-section-label">Renewal reminders</p>
+      <div class="reminder-row">
+        <div class="reminder-quickselect">
+          <button type="button" class="btn btn-ghost" id="btnSelectRenewalDue">Select Renewal Due</button>
+          <button type="button" class="btn btn-ghost" id="btnSelectLongLapsed">Select Long Lapsed</button>
+          <button type="button" class="btn btn-ghost" id="btnSelectNotActive">Select all not-Active</button>
+          <button type="button" class="btn btn-ghost" id="btnSelectNone">Clear selection</button>
+        </div>
+      </div>
+      <div class="reminder-row">
+        <div class="reminder-quickselect">
+          <button type="button" class="btn btn-outline" id="btnSelectMissingPhone">✉ No phone on file → email them</button>
+          <button type="button" class="btn btn-outline" id="btnSelectMissingEmail">💬 No email on file → text them</button>
+        </div>
+      </div>
+
+      <p class="reminder-section-label">Ask members to update their contact info</p>
+      <div class="reminder-row">
+        <div class="reminder-quickselect">
+          <button type="button" class="btn btn-outline" id="btnSelectUpdateContactEmail">✉ No address/phone → email to update</button>
+          <button type="button" class="btn btn-outline" id="btnSelectUpdateContactSms">💬 No address/email → text to update</button>
+        </div>
+      </div>
+
+      <div id="reminderRecipientList" class="reminder-recipient-list"></div>
+
+      <div class="form-grid" style="margin-top:14px;">
+        <label class="span-2" id="reminderSubjectWrap">Subject (email only)
+          <input type="text" id="reminderSubject" />
+        </label>
+        <label class="span-2">Message
+          <textarea id="reminderBody" rows="6"></textarea>
+        </label>
+      </div>
+      <p class="hint">Placeholders you can use: <code>{{name}}</code> <code>{{status}}</code> <code>{{category}}</code> <code>{{lastPaymentDate}}</code> <code>{{yearRenewed}}</code> <code>{{missingFieldsList}}</code> (fills in with whichever of address/phone/email are missing for that person — only for the "update contact info" buttons above).</p>
+
+      <div class="modal-actions">
+        <span class="visible-count" id="reminderSelectedCount">0 selected</span>
+        <div class="modal-actions-right">
+          <button type="button" class="btn btn-primary" id="btnStartQueue">Start send &rarr;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-body" id="reminderStepQueue" style="display:none;">
+      <div class="reminder-progress">
+        <span id="queueProgressText">1 of 1</span>
+        <div class="progress-bar"><div class="progress-bar-fill" id="queueProgressFill"></div></div>
+      </div>
+
+      <h3 id="queueRecipientName">—</h3>
+      <p class="hint" id="queueRecipientContact"></p>
+      <p class="hint" id="queueSendStatus"></p>
+
+      <label id="queueSubjectWrap">Subject
+        <input type="text" id="queueSubjectField" />
+      </label>
+      <label>Message
+        <textarea id="queueBodyField" rows="6"></textarea>
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btnCloseQueue">Close</button>
+        <div class="modal-actions-right">
+          <button type="button" class="btn btn-outline" id="btnSkipQueue">Skip</button>
+          <button type="button" class="btn btn-primary" id="btnSendCurrent">Send &amp; Next &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Access Modal -->
+<div id="accessModal" class="modal-overlay" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Manage Access</h2>
+      <button id="accessModalClose" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Anyone listed here can sign in and see/edit member data. Admins can add or remove people.</p>
+      <div id="accessUserList" class="reminder-recipient-list"></div>
+      <form id="addAccessForm" class="access-add-row">
+        <input type="email" id="newAccessEmail" placeholder="email@example.com" required />
+        <label class="access-admin-check"><input type="checkbox" id="newAccessIsAdmin" /> Admin</label>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+</div><!-- /appRoot -->
+
+<script src="lib/supabase.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
