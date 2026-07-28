@@ -130,9 +130,8 @@ function memberToRowPayload(m) {
     children_names: m.childrenNames || null,
     native_place: m.nativePlace || null,
     notes: m.notes || null,
-    attended_2026_new_year: !!m.attended2026NewYear,
-    event_2026_payment: m.event2026Payment || null,
-    event_2026_member_status: m.event2026MemberStatus || null,
+    // 2026 event fields are intentionally omitted here (no longer collected
+    // in the UI) so inserts/updates never touch or clear that data in the DB.
   };
 }
 
@@ -168,6 +167,7 @@ async function loadAllData() {
 
 function categoryFor(status) {
   if (["Life", "Annual", "Biennial", "Active"].includes(status)) return "Active";
+  if (status === "Moved Out") return "Moved Out";
   if (status === "Expired") return "Renewal Due";
   if (status === "Lapsed") return "Long Lapsed";
   return "Renewal Due";
@@ -177,7 +177,7 @@ function fmtDate(d) { return d || ""; }
 function fmtYear(y) { if (!y) return ""; if (Number(y) <= 1900) return "Unknown"; return String(y); }
 
 function badgeForCategory(cat) {
-  const cls = cat === "Active" ? "badge-active" : cat === "Renewal Due" ? "badge-renew" : "badge-lapsed";
+  const cls = cat === "Active" ? "badge-active" : cat === "Renewal Due" ? "badge-renew" : cat === "Moved Out" ? "badge-moved" : "badge-lapsed";
   return `<span class="badge ${cls}">${cat}</span>`;
 }
 function badgeForStatus(status) {
@@ -185,10 +185,8 @@ function badgeForStatus(status) {
   if (status === "Life") cls = "badge-life";
   else if (status === "Annual" || status === "Biennial") cls = "badge-active";
   else if (status === "Lapsed") cls = "badge-lapsed";
+  else if (status === "Moved Out") cls = "badge-moved";
   return `<span class="badge ${cls}">${status || "—"}</span>`;
-}
-function badgeForEvent(attended) {
-  return attended ? `<span class="badge badge-yes">Attended</span>` : `<span class="badge badge-no">No</span>`;
 }
 function lastReminder(member) {
   const hist = member.reminderHistory || [];
@@ -246,6 +244,48 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// ---------- location chart helpers ----------
+// Collates place names written with different amounts of detail (e.g. "Kochi"
+// and "Kochi, Kerala" both become "Kochi") by keeping just the primary place
+// name before the first comma, then bucketing case-insensitively.
+function normalizePlaceKey(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  s = s.split(",")[0].trim();
+  s = s.replace(/\s+/g, " ");
+  return s || null;
+}
+function extractUsCityName(address) {
+  if (!address) return null;
+  const parts = String(address).split(",").map(p => p.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return normalizePlaceKey(parts[0]);
+  const lastPart = parts[parts.length - 1];
+  const looksLikeStateZip = /^[A-Za-z]{2}(\s+\d{5}(-\d{4})?)?$/.test(lastPart) || /^\d{5}(-\d{4})?$/.test(lastPart);
+  const cityPart = looksLikeStateZip ? parts[parts.length - 2] : lastPart;
+  return normalizePlaceKey(cityPart);
+}
+function buildLocationCounts(country) {
+  const counts = new Map(); // lowercase key -> { display, count }
+  members.forEach(m => {
+    const name = country === "india" ? normalizePlaceKey(m.nativePlace) : extractUsCityName(m.address);
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!counts.has(key)) counts.set(key, { display: name, count: 0 });
+    counts.get(key).count++;
+  });
+  let list = Array.from(counts.values()).sort((a, b) => b.count - a.count);
+  const TOP_N = 12;
+  if (list.length > TOP_N) {
+    const top = list.slice(0, TOP_N);
+    const otherCount = list.slice(TOP_N).reduce((s, x) => s + x.count, 0);
+    if (otherCount > 0) top.push({ display: "Other", count: otherCount });
+    list = top;
+  }
+  return list;
+}
+
 // ---------- filtering / sorting ----------
 
 function colFilterValue(id) {
@@ -271,15 +311,12 @@ function getFiltered() {
   const fAddress = colFilterValue("colf-address");
   const fHousehold = colFilterValue("colf-household");
   const fNotes = colFilterValue("colf-notes");
-  const fEvent = colFilterValue("colf-event");
   const fReminder = colFilterValue("colf-reminder");
 
   let list = members.filter(m => {
     if (fCategory && m.category !== fCategory) return false;
     if (fStatus && m.status !== fStatus) return false;
     if (fType && m.type !== fType) return false;
-    if (fEvent === "yes" && !m.attended2026NewYear) return false;
-    if (fEvent === "no" && m.attended2026NewYear) return false;
     if (fPhone === "has" && !hasPhone(m)) return false;
     if (fPhone === "missing" && hasPhone(m)) return false;
     if (fEmail === "has" && !hasEmail(m)) return false;
@@ -347,7 +384,6 @@ function render() {
         <td>${escapeHtml(m.address || "")}${m.nativePlace ? `<div style="color:#8a938c;font-size:11px;">${escapeHtml(m.nativePlace)}</div>` : ""}</td>
         <td>${[m.spouseName, m.childrenNames].filter(Boolean).map(escapeHtml).join(" · ")}</td>
         <td>${escapeHtml(m.notes || "")}</td>
-        <td>${badgeForEvent(m.attended2026NewYear)}${m.event2026Payment ? `<div style="font-size:11px;color:#8a938c;">$${m.event2026Payment}</div>` : ""}</td>
         <td>${badgeForReminder(m)}</td>
         <td class="row-actions">
           <button class="edit-btn" data-id="${m.id}">Edit</button>
@@ -363,15 +399,20 @@ function render() {
 
 function renderStats() {
   const total = members.length;
-  document.getElementById("statTotal").textContent = total;
-  document.getElementById("statActive").textContent = members.filter(m => m.category === "Active").length;
-  document.getElementById("statRenew").textContent = members.filter(m => m.category === "Renewal Due").length;
-  document.getElementById("statLapsed").textContent = members.filter(m => m.category === "Long Lapsed").length;
+  const categoryCounts = {
+    "Active": members.filter(m => m.category === "Active").length,
+    "Renewal Due": members.filter(m => m.category === "Renewal Due").length,
+    "Long Lapsed": members.filter(m => m.category === "Long Lapsed").length,
+    "Moved Out": members.filter(m => m.category === "Moved Out").length,
+  };
+  document.getElementById("donutTotalValue").textContent = total;
+  renderCategoryChart(categoryCounts);
+  renderLocationChart();
   renderStatChips();
 }
 
 function renderStatChips() {
-  const statuses = ["Life", "Annual", "Biennial", "Expired", "Lapsed"];
+  const statuses = ["Life", "Annual", "Biennial", "Expired", "Lapsed", "Moved Out"];
   const curStatus = colFilterValue("colf-status");
   document.getElementById("statusChips").innerHTML = statuses.map(status => {
     const count = members.filter(m => m.status === status).length;
@@ -391,6 +432,105 @@ function renderStatChips() {
     <button type="button" class="chip chip-warn${curEmail === "missing" && !bothActive ? " active" : ""}" data-chip="email-missing">No email on file <span class="chip-count">${noEmail}</span></button>
     <button type="button" class="chip chip-warn${bothActive ? " active" : ""}" data-chip="both-missing">Missing both <span class="chip-count">${missingBoth}</span></button>
   `;
+
+  const curType = colFilterValue("colf-type");
+  const familyCount = members.filter(m => m.type === "Family").length;
+  const singleCount = members.filter(m => m.type === "Single").length;
+  document.getElementById("householdChips").innerHTML = `
+    <button type="button" class="chip${curType === "Family" ? " active" : ""}" data-chip="type" data-value="Family">Family <span class="chip-count">${familyCount}</span></button>
+    <button type="button" class="chip${curType === "Single" ? " active" : ""}" data-chip="type" data-value="Single">Single <span class="chip-count">${singleCount}</span></button>
+  `;
+}
+
+// ---------- charts ----------
+
+let categoryChart = null;
+let locationChart = null;
+let locationChartCountry = "india";
+
+const CATEGORY_COLORS = { "Active": "#178a82", "Renewal Due": "#b8860b", "Long Lapsed": "#7a2048", "Moved Out": "#6b3fa0" };
+
+function renderCategoryChart(counts) {
+  const canvas = document.getElementById("categoryChartCanvas");
+  if (!canvas || typeof Chart === "undefined") return;
+  const labels = Object.keys(counts);
+  const data = Object.values(counts);
+  const bg = labels.map(l => CATEGORY_COLORS[l] || "#999");
+
+  try {
+    if (categoryChart) {
+      categoryChart.data.labels = labels;
+      categoryChart.data.datasets[0].data = data;
+      categoryChart.data.datasets[0].backgroundColor = bg;
+      categoryChart.update();
+      return;
+    }
+
+    categoryChart = new Chart(canvas, {
+    type: "doughnut",
+    data: { labels, datasets: [{ data, backgroundColor: bg, borderWidth: 2, borderColor: "#fff" }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, padding: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed}` } },
+      },
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        const label = categoryChart.data.labels[idx];
+        const el = document.getElementById("colf-category");
+        el.value = el.value === label ? "" : label;
+        render();
+        const wrap = document.querySelector(".table-wrap");
+        if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      },
+      },
+    });
+  } catch (e) {
+    console.error("Could not render category chart:", e);
+  }
+}
+
+function renderLocationChart() {
+  const canvas = document.getElementById("locationChartCanvas");
+  if (!canvas || typeof Chart === "undefined") return;
+  const list = buildLocationCounts(locationChartCountry);
+  const labels = list.map(x => x.display);
+  const data = list.map(x => x.count);
+  const barColor = locationChartCountry === "india" ? "#e2711d" : "#1b2a55";
+
+  try {
+    if (locationChart) {
+      locationChart.data.labels = labels;
+      locationChart.data.datasets[0].data = data;
+      locationChart.data.datasets[0].backgroundColor = barColor;
+      locationChart.update();
+      return;
+    }
+
+    locationChart = new Chart(canvas, {
+      type: "bar",
+      data: { labels, datasets: [{ data, backgroundColor: barColor, borderRadius: 4, maxBarThickness: 18 }] },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.parsed.x} member${ctx.parsed.x === 1 ? "" : "s"}` } },
+        },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } },
+          y: { ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  } catch (e) {
+    console.error("Could not render location chart:", e);
+  }
 }
 
 // ---------- modal / CRUD ----------
@@ -412,8 +552,6 @@ function openModal(member) {
   document.getElementById("fieldSpouseName").value = member ? member.spouseName || "" : "";
   document.getElementById("fieldChildrenNames").value = member ? member.childrenNames || "" : "";
   document.getElementById("fieldNotes").value = member ? member.notes || "" : "";
-  document.getElementById("fieldAttended2026").value = member && member.attended2026NewYear ? "true" : "false";
-  document.getElementById("fieldEventPayment").value = member && member.event2026Payment ? member.event2026Payment : "";
   document.getElementById("memberModal").style.display = "flex";
 }
 function closeModal() {
@@ -438,8 +576,6 @@ async function handleFormSubmit(e) {
     spouseName: document.getElementById("fieldSpouseName").value.trim() || null,
     childrenNames: document.getElementById("fieldChildrenNames").value.trim() || null,
     notes: document.getElementById("fieldNotes").value.trim() || null,
-    attended2026NewYear: document.getElementById("fieldAttended2026").value === "true",
-    event2026Payment: document.getElementById("fieldEventPayment").value ? Number(document.getElementById("fieldEventPayment").value) : null,
   };
   if (!data.name) return;
 
@@ -476,8 +612,6 @@ function memberToRow(m) {
     "Year Renewed": m.yearRenewed && Number(m.yearRenewed) > 1900 ? m.yearRenewed : "",
     "Phone": m.phone || "", "Email": m.email || "", "Address": m.address || "", "Native Place": m.nativePlace || "",
     "Spouse Name": m.spouseName || "", "Children's Names": m.childrenNames || "", "Notes": m.notes || "",
-    "Attended 2026 New Year Event": m.attended2026NewYear ? "Yes" : "No",
-    "2026 Event Payment ($)": m.event2026Payment || "",
     "Last Reminder Sent": last ? `${last.date} (${reminderDetailLabel(last)})` : "Never",
   };
 }
@@ -853,7 +987,7 @@ function attachEvents() {
     else if (e.target.classList.contains("delete-btn")) deleteMember(id);
   });
 
-  const columnFilterIds = ["colf-name", "colf-category", "colf-status", "colf-type", "colf-payment", "colf-yearRenewed", "colf-phone", "colf-email", "colf-address", "colf-household", "colf-notes", "colf-event", "colf-reminder"];
+  const columnFilterIds = ["colf-name", "colf-category", "colf-status", "colf-type", "colf-payment", "colf-yearRenewed", "colf-phone", "colf-email", "colf-address", "colf-household", "colf-notes", "colf-reminder"];
   ["searchBox", ...columnFilterIds].forEach(id => {
     document.getElementById(id).addEventListener("input", render);
     document.getElementById(id).addEventListener("change", render);
@@ -879,6 +1013,19 @@ function attachEvents() {
     else if (chip === "email-missing") { const on = !(emailEl.value === "missing" && phoneEl.value !== "missing"); emailEl.value = on ? "missing" : ""; phoneEl.value = ""; }
     else if (chip === "both-missing") { const on = !(phoneEl.value === "missing" && emailEl.value === "missing"); phoneEl.value = on ? "missing" : ""; emailEl.value = on ? "missing" : ""; }
     render();
+  });
+  document.getElementById("householdChips").addEventListener("click", (e) => {
+    const btn = e.target.closest(".chip"); if (!btn) return;
+    const el = document.getElementById("colf-type");
+    el.value = el.value === btn.dataset.value ? "" : btn.dataset.value;
+    render();
+  });
+  document.getElementById("locationToggle").addEventListener("click", (e) => {
+    const btn = e.target.closest(".loc-toggle-btn"); if (!btn) return;
+    document.querySelectorAll(".loc-toggle-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    locationChartCountry = btn.dataset.country;
+    renderLocationChart();
   });
 
   document.querySelectorAll("thead th[data-sort]").forEach(th => {

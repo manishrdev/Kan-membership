@@ -36,8 +36,11 @@
 
 <header class="topbar">
   <div class="topbar-title">
-    <h1>KAN Membership Tracker</h1>
-    <p>Kerala Association of Nashville — member &amp; renewal management</p>
+    <img src="assets/kan-logo.png" alt="KAN logo" class="logo-img" id="logoImg" onerror="this.style.display='none'" />
+    <div>
+      <h1>KAN Membership Tracker</h1>
+      <p>Kerala Association of Nashville — member &amp; renewal management</p>
+    </div>
   </div>
   <div class="topbar-actions">
     <span class="whoami" id="whoamiLabel"></span>
@@ -48,22 +51,29 @@
   </div>
 </header>
 
-<section class="stats" id="statsRow">
-  <div class="stat-card stat-total">
-    <div class="stat-value" id="statTotal">0</div>
-    <div class="stat-label">Total Members</div>
+<section class="dashboard-top">
+  <div class="chart-card chart-card-category">
+    <div class="chart-card-header"><h3>Membership Overview</h3></div>
+    <div class="donut-wrap">
+      <canvas id="categoryChartCanvas"></canvas>
+      <div class="donut-center">
+        <div class="donut-center-value" id="donutTotalValue">0</div>
+        <div class="donut-center-label">Total Members</div>
+      </div>
+    </div>
+    <p class="hint chart-hint">Hover a segment for its count · click to filter the table below.</p>
   </div>
-  <div class="stat-card stat-active">
-    <div class="stat-value" id="statActive">0</div>
-    <div class="stat-label">Active</div>
-  </div>
-  <div class="stat-card stat-renew">
-    <div class="stat-value" id="statRenew">0</div>
-    <div class="stat-label">Renewal Due</div>
-  </div>
-  <div class="stat-card stat-lapsed">
-    <div class="stat-value" id="statLapsed">0</div>
-    <div class="stat-label">Long Lapsed</div>
+  <div class="chart-card chart-card-location">
+    <div class="chart-card-header">
+      <h3>Member Locations</h3>
+      <div class="location-toggle" id="locationToggle">
+        <button type="button" class="loc-toggle-btn active" data-country="india">India</button>
+        <button type="button" class="loc-toggle-btn" data-country="usa">USA</button>
+      </div>
+    </div>
+    <div class="location-chart-wrap">
+      <canvas id="locationChartCanvas"></canvas>
+    </div>
   </div>
 </section>
 
@@ -75,6 +85,10 @@
   <div class="chip-group">
     <span class="chip-group-label">Contact info:</span>
     <div class="chip-row" id="contactChips"></div>
+  </div>
+  <div class="chip-group">
+    <span class="chip-group-label">Household:</span>
+    <div class="chip-row" id="householdChips"></div>
   </div>
 </section>
 
@@ -110,7 +124,6 @@
         <th>Address / Native Place</th>
         <th>Household</th>
         <th>Notes</th>
-        <th>2026 Event</th>
         <th>Last Reminder</th>
         <th>Actions</th>
       </tr>
@@ -122,6 +135,7 @@
             <option value="Active">Active</option>
             <option value="Renewal Due">Renewal Due</option>
             <option value="Long Lapsed">Long Lapsed</option>
+            <option value="Moved Out">Moved Out</option>
           </select>
         </th>
         <th>
@@ -132,6 +146,7 @@
             <option value="Biennial">Biennial</option>
             <option value="Expired">Expired</option>
             <option value="Lapsed">Lapsed</option>
+            <option value="Moved Out">Moved Out</option>
           </select>
         </th>
         <th>
@@ -160,13 +175,6 @@
         <th><input type="text" id="colf-address" class="col-filter" placeholder="Filter address…" /></th>
         <th><input type="text" id="colf-household" class="col-filter" placeholder="Filter household…" /></th>
         <th><input type="text" id="colf-notes" class="col-filter" placeholder="Filter notes…" /></th>
-        <th>
-          <select id="colf-event" class="col-filter">
-            <option value="">Any</option>
-            <option value="yes">Attended</option>
-            <option value="no">Did not attend</option>
-          </select>
-        </th>
         <th>
           <select id="colf-reminder" class="col-filter">
             <option value="">Any</option>
@@ -210,6 +218,7 @@
             <option value="Biennial">Biennial</option>
             <option value="Expired">Expired</option>
             <option value="Lapsed">Lapsed</option>
+            <option value="Moved Out">Moved Out</option>
           </select>
         </label>
 
@@ -229,14 +238,6 @@
         <label>Spouse Name<input type="text" id="fieldSpouseName" /></label>
         <label class="span-2">Children's Names<input type="text" id="fieldChildrenNames" /></label>
         <label class="span-2">Notes / Remarks<input type="text" id="fieldNotes" /></label>
-
-        <label>Attended 2026 New Year Event?
-          <select id="fieldAttended2026">
-            <option value="false">No</option>
-            <option value="true">Yes</option>
-          </select>
-        </label>
-        <label>2026 Event Payment ($)<input type="number" id="fieldEventPayment" min="0" step="1" /></label>
       </div>
       <div class="modal-actions">
         <button type="button" id="btnDeleteMember" class="btn btn-ghost btn-danger-text" style="display:none;">Delete Member</button>
@@ -365,6 +366,7 @@
 
 <script src="lib/supabase.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
+<script src="lib/chart.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
