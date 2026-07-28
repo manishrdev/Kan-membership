@@ -168,16 +168,18 @@ async function loadAllData() {
 function categoryFor(status) {
   if (["Life", "Annual", "Biennial", "Active"].includes(status)) return "Active";
   if (status === "Moved Out") return "Moved Out";
+  if (status === "Deleted") return "Deleted";
   if (status === "Expired") return "Renewal Due";
   if (status === "Lapsed") return "Long Lapsed";
   return "Renewal Due";
 }
+function isDeleted(m) { return m.category === "Deleted"; }
 
 function fmtDate(d) { return d || ""; }
 function fmtYear(y) { if (!y) return ""; if (Number(y) <= 1900) return "Unknown"; return String(y); }
 
 function badgeForCategory(cat) {
-  const cls = cat === "Active" ? "badge-active" : cat === "Renewal Due" ? "badge-renew" : cat === "Moved Out" ? "badge-moved" : "badge-lapsed";
+  const cls = cat === "Active" ? "badge-active" : cat === "Renewal Due" ? "badge-renew" : cat === "Moved Out" ? "badge-moved" : cat === "Deleted" ? "badge-deleted" : "badge-lapsed";
   return `<span class="badge ${cls}">${cat}</span>`;
 }
 function badgeForStatus(status) {
@@ -186,6 +188,7 @@ function badgeForStatus(status) {
   else if (status === "Annual" || status === "Biennial") cls = "badge-active";
   else if (status === "Lapsed") cls = "badge-lapsed";
   else if (status === "Moved Out") cls = "badge-moved";
+  else if (status === "Deleted") cls = "badge-deleted";
   return `<span class="badge ${cls}">${status || "—"}</span>`;
 }
 function lastReminder(member) {
@@ -245,30 +248,80 @@ function escapeHtml(str) {
 }
 
 // ---------- location chart helpers ----------
-// Collates place names written with different amounts of detail (e.g. "Kochi"
-// and "Kochi, Kerala" both become "Kochi") by keeping just the primary place
-// name before the first comma, then bucketing case-insensitively.
+// Real member data is messy: "1040 Pittman Dr., Gallatin 37066" (no comma
+// before the zip), "117 Brighton lane, Lebanon, TN, 37090" (zip as its own
+// segment), "816 Georgebro ct" (street only, no city at all), native places
+// like "Idukki (Kerala)" or "Alleppey Kerala" (state glued on with no comma).
+// These helpers do their best to pull out just the place name so the chart
+// buckets consistently instead of showing raw address fragments.
+
+const US_STATE_ABBR = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+]);
+const STREET_SUFFIX_RE = /^(dr|drive|rd|road|ln|lane|ct|court|st|street|ave|avenue|blvd|boulevard|cir|circle|ter|terrace|terr|pl|place|way|pkwy|parkway|trl|trail|hwy|highway|sq|square|xing|crossing|pass|run|walk|path|loop|row|pike|apt|unit|suite|ste)\.?$/i;
+
+function stripTrailingZip(s) {
+  return s.replace(/\s*\b\d{5}(-\d{4})?\s*$/, "").trim();
+}
+function stripTrailingState(s) {
+  const m = s.match(/^(.*?)[\s,]+([A-Za-z]{2})$/);
+  if (m && US_STATE_ABBR.has(m[2].toUpperCase())) return m[1].trim();
+  return s;
+}
+function isBareState(s) {
+  return US_STATE_ABBR.has(String(s).trim().toUpperCase());
+}
+function looksLikeStreetFragment(s) {
+  if (!s) return true;
+  const trimmed = s.trim();
+  if (/^\d/.test(trimmed)) return true; // starts with a house number
+  const lastWord = trimmed.split(/\s+/).pop();
+  return STREET_SUFFIX_RE.test(lastWord);
+}
+
+// Collates place names written with different amounts of detail (e.g. "Kochi",
+// "Kochi, Kerala" and "Idukki (Kerala)" all reduce to just the primary name).
 function normalizePlaceKey(raw) {
   if (!raw) return null;
   let s = String(raw).trim();
   if (!s) return null;
-  s = s.split(",")[0].trim();
+  s = s.split(",")[0].split("/")[0].trim();
+  s = s.replace(/\([^)]*\)/g, "").trim();
+  s = s.replace(/\b(kerala|dist\.?|district)\s*$/i, "").trim();
   s = s.replace(/\s+/g, " ");
   return s || null;
 }
+
 function extractUsCityName(address) {
   if (!address) return null;
-  const parts = String(address).split(",").map(p => p.trim()).filter(Boolean);
+  let s = String(address).trim();
+  if (!s) return null;
+  s = s.replace(/,?\s*(USA|U\.S\.A\.?|United States)\s*$/i, "").trim();
+  const parts = s.split(",").map(p => p.trim()).filter(Boolean);
   if (parts.length === 0) return null;
-  if (parts.length === 1) return normalizePlaceKey(parts[0]);
-  const lastPart = parts[parts.length - 1];
-  const looksLikeStateZip = /^[A-Za-z]{2}(\s+\d{5}(-\d{4})?)?$/.test(lastPart) || /^\d{5}(-\d{4})?$/.test(lastPart);
-  const cityPart = looksLikeStateZip ? parts[parts.length - 2] : lastPart;
-  return normalizePlaceKey(cityPart);
+
+  if (parts.length === 1) {
+    const candidate = stripTrailingState(stripTrailingZip(parts[0]));
+    if (!candidate || isBareState(candidate) || looksLikeStreetFragment(candidate)) return null;
+    return normalizePlaceKey(candidate);
+  }
+
+  let idx = parts.length - 1;
+  while (idx >= 0 && (/^\d{5}(-\d{4})?$/.test(parts[idx]) || isBareState(parts[idx]))) idx--;
+  for (; idx >= 0; idx--) {
+    const candidate = stripTrailingState(stripTrailingZip(parts[idx]));
+    if (candidate && !isBareState(candidate) && !looksLikeStreetFragment(candidate)) {
+      return normalizePlaceKey(candidate);
+    }
+  }
+  return null;
 }
 function buildLocationCounts(country) {
   const counts = new Map(); // lowercase key -> { display, count }
-  members.forEach(m => {
+  members.filter(m => !isDeleted(m)).forEach(m => {
     const name = country === "india" ? normalizePlaceKey(m.nativePlace) : extractUsCityName(m.address);
     if (!name) return;
     const key = name.toLowerCase();
@@ -372,7 +425,7 @@ function render() {
   } else {
     emptyState.style.display = "none";
     tbody.innerHTML = list.map(m => `
-      <tr data-id="${m.id}">
+      <tr data-id="${m.id}" class="${isDeleted(m) ? "row-deleted" : ""}">
         <td><strong>${escapeHtml(m.name)}</strong>${m.otherNames ? `<div style="color:#8a938c;font-size:11px;">${escapeHtml(m.otherNames)}</div>` : ""}</td>
         <td>${badgeForCategory(m.category)}</td>
         <td>${badgeForStatus(m.status)}</td>
@@ -398,7 +451,10 @@ function render() {
 }
 
 function renderStats() {
-  const total = members.length;
+  // Deleted members are excluded from the overview chart/total and location
+  // chart (soft-deleted, no longer "current" membership) but stay visible
+  // and filterable in the table itself, per design.
+  const total = members.filter(m => !isDeleted(m)).length;
   const categoryCounts = {
     "Active": members.filter(m => m.category === "Active").length,
     "Renewal Due": members.filter(m => m.category === "Renewal Due").length,
@@ -412,7 +468,7 @@ function renderStats() {
 }
 
 function renderStatChips() {
-  const statuses = ["Life", "Annual", "Biennial", "Expired", "Lapsed", "Moved Out"];
+  const statuses = ["Life", "Annual", "Biennial", "Expired", "Lapsed", "Moved Out", "Deleted"];
   const curStatus = colFilterValue("colf-status");
   document.getElementById("statusChips").innerHTML = statuses.map(status => {
     const count = members.filter(m => m.status === status).length;
@@ -477,6 +533,7 @@ function renderCategoryChart(counts) {
         legend: { position: "bottom", labels: { boxWidth: 10, padding: 12, font: { size: 11 } } },
         tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed}` } },
       },
+      onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? "pointer" : "default"; },
       onClick: (evt, elements) => {
         if (!elements.length) return;
         const idx = elements[0].index;
@@ -525,6 +582,18 @@ function renderLocationChart() {
         scales: {
           x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } },
           y: { ticks: { font: { size: 11 } } },
+        },
+        onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? "pointer" : "default"; },
+        onClick: (evt, elements) => {
+          if (!elements.length) return;
+          const idx = elements[0].index;
+          const label = locationChart.data.labels[idx];
+          if (!label || label === "Other") return;
+          const el = document.getElementById("colf-address");
+          el.value = el.value === label ? "" : label;
+          render();
+          const wrap = document.querySelector(".table-wrap");
+          if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
         },
       },
     });
@@ -595,9 +664,10 @@ async function handleFormSubmit(e) {
 async function deleteMember(id) {
   const m = members.find(x => x.id === id);
   if (!m) return;
-  if (!confirm(`Delete "${m.name}" from the tracker? This cannot be undone.`)) return;
-  const { error } = await supa.from("members").delete().eq("id", id);
-  if (error) { alert("Could not delete: " + error.message); return; }
+  if (isDeleted(m)) { alert(`"${m.name}" is already marked Deleted.`); return; }
+  if (!confirm(`Mark "${m.name}" as Deleted?\n\nTheir record and reminder history are kept, not erased — they'll show a Deleted badge, drop out of renewal reminders and reports, and stay filterable. To undo, open Edit and change their Status.`)) return;
+  const { error } = await supa.from("members").update({ status: "Deleted", category: "Deleted" }).eq("id", id);
+  if (error) { alert("Could not mark as deleted: " + error.message); return; }
   await loadAllData();
   render();
 }
@@ -629,15 +699,18 @@ function downloadFilteredView() {
   downloadWorkbook([{ name: "Filtered Members", rows: list }], `KAN_Members_Filtered_${dateStamp()}.xlsx`);
 }
 function downloadNotRenewed() {
-  const list = members.filter(m => m.category !== "Active");
+  const list = members.filter(m => m.category !== "Active" && !isDeleted(m));
   downloadWorkbook([{ name: "Not Renewed", rows: list }], `KAN_Members_Not_Renewed_${dateStamp()}.xlsx`);
 }
 function downloadFullReport() {
-  downloadWorkbook([
+  const sheets = [
     { name: "Active Members", rows: members.filter(m => m.category === "Active") },
     { name: "Members To Renew", rows: members.filter(m => m.category === "Renewal Due") },
     { name: "Not Renewed - Long Term", rows: members.filter(m => m.category === "Long Lapsed") },
-  ], `KAN_Membership_Full_Report_${dateStamp()}.xlsx`);
+  ];
+  const deleted = members.filter(m => isDeleted(m));
+  if (deleted.length) sheets.push({ name: "Deleted", rows: deleted });
+  downloadWorkbook(sheets, `KAN_Membership_Full_Report_${dateStamp()}.xlsx`);
 }
 function dateStamp() {
   const d = new Date();
@@ -673,7 +746,7 @@ function openReminderModal() {
   setReminderComposeFields(reminderChannel, reminderCampaign);
   document.getElementById("reminderStepSelect").style.display = "block";
   document.getElementById("reminderStepQueue").style.display = "none";
-  const preselect = new Set(getFiltered().filter(m => m.category !== "Active").map(m => m.id));
+  const preselect = new Set(getFiltered().filter(m => m.category !== "Active" && !isDeleted(m)).map(m => m.id));
   renderRecipientList(preselect);
   document.getElementById("reminderModal").style.display = "flex";
 }
@@ -684,7 +757,7 @@ function closeReminderModal() {
 function renderRecipientList(preselectIds) {
   const channel = currentReminderChannel();
   const container = document.getElementById("reminderRecipientList");
-  const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = members.filter(m => !isDeleted(m)).sort((a, b) => a.name.localeCompare(b.name));
   container.innerHTML = sorted.map(m => {
     const contact = channel === "sms" ? normalizePhone(m.phone) : (m.email || null);
     const missing = !contact;
@@ -892,13 +965,22 @@ function closeAccessModal() {
 function renderAccessList(rows) {
   document.getElementById("accessUserList").innerHTML = rows.map(r => `
     <div class="access-user-row">
-      <span class="au-email">${escapeHtml(r.email)}${r.is_admin ? " (admin)" : ""}</span>
+      <div class="au-info">
+        <span class="au-name">${escapeHtml(r.name || r.email)}${r.is_admin ? ` <span class="au-admin-badge">Admin</span>` : ""}</span>
+        <span class="au-meta">${escapeHtml(r.position || "")}${r.position ? " · " : ""}${escapeHtml(r.email)}</span>
+      </div>
       <button type="button" class="remove-access-btn" data-email="${escapeHtml(r.email)}">Remove</button>
     </div>
   `).join("");
 }
-async function addAccessUser(email, admin) {
-  const { error } = await supa.from("allowed_users").insert({ email: email.trim().toLowerCase(), is_admin: admin, added_by: currentUser.email });
+async function addAccessUser(name, email, position, admin) {
+  const { error } = await supa.from("allowed_users").insert({
+    email: email.trim().toLowerCase(),
+    name: name.trim() || null,
+    position: position.trim() || null,
+    is_admin: admin,
+    added_by: currentUser.email,
+  });
   if (error) { alert("Could not add: " + error.message); return; }
   openAccessModal();
 }
@@ -928,10 +1010,14 @@ async function handleAuthedSession(session) {
     return;
   }
   isAdmin = !!access.is_admin;
+  currentUser.name = access.name || null;
+  currentUser.position = access.position || null;
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("noAccessScreen").style.display = "none";
   document.getElementById("appRoot").style.display = "block";
-  document.getElementById("whoamiLabel").textContent = currentUser.email;
+  document.getElementById("whoamiLabel").textContent = currentUser.name
+    ? currentUser.name + (currentUser.position ? " — " + currentUser.position : "")
+    : currentUser.email; // fall back to email only until this person's profile is filled in from Manage Access
   document.getElementById("btnManageAccess").style.display = isAdmin ? "inline-block" : "none";
 
   await loadAllData();
@@ -1060,7 +1146,7 @@ function attachEvents() {
 
   document.getElementById("btnSelectRenewalDue").addEventListener("click", () => selectRecipientsByPredicate(m => m.category === "Renewal Due"));
   document.getElementById("btnSelectLongLapsed").addEventListener("click", () => selectRecipientsByPredicate(m => m.category === "Long Lapsed"));
-  document.getElementById("btnSelectNotActive").addEventListener("click", () => selectRecipientsByPredicate(m => m.category !== "Active"));
+  document.getElementById("btnSelectNotActive").addEventListener("click", () => selectRecipientsByPredicate(m => m.category !== "Active" && !isDeleted(m)));
   document.getElementById("btnSelectNone").addEventListener("click", () => selectRecipientsByPredicate(() => false));
   document.getElementById("btnSelectMissingPhone").addEventListener("click", () => selectContactGapRecipients("contact-gap-phone"));
   document.getElementById("btnSelectMissingEmail").addEventListener("click", () => selectContactGapRecipients("contact-gap-email"));
@@ -1077,10 +1163,14 @@ function attachEvents() {
   document.getElementById("accessModal").addEventListener("click", (e) => { if (e.target.id === "accessModal") closeAccessModal(); });
   document.getElementById("addAccessForm").addEventListener("submit", (e) => {
     e.preventDefault();
+    const name = document.getElementById("newAccessName").value;
     const email = document.getElementById("newAccessEmail").value;
+    const position = document.getElementById("newAccessPosition").value;
     const admin = document.getElementById("newAccessIsAdmin").checked;
-    addAccessUser(email, admin);
+    addAccessUser(name, email, position, admin);
+    document.getElementById("newAccessName").value = "";
     document.getElementById("newAccessEmail").value = "";
+    document.getElementById("newAccessPosition").value = "";
     document.getElementById("newAccessIsAdmin").checked = false;
   });
   document.getElementById("accessUserList").addEventListener("click", (e) => {

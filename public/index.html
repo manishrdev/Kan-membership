@@ -36,7 +36,7 @@
 
 <header class="topbar">
   <div class="topbar-title">
-    <img src="assets/kan-logo.png" alt="KAN logo" class="logo-img" id="logoImg" onerror="this.style.display='none'" />
+    <img src="assets/kan-logo.jpg" alt="KAN logo" class="logo-img" id="logoImg" onerror="this.style.display='none'" />
     <div>
       <h1>KAN Membership Tracker</h1>
       <p>Kerala Association of Nashville — member &amp; renewal management</p>
@@ -74,6 +74,7 @@
     <div class="location-chart-wrap">
       <canvas id="locationChartCanvas"></canvas>
     </div>
+    <p class="hint chart-hint">Click a bar to filter the table below by that place.</p>
   </div>
 </section>
 
@@ -136,6 +137,7 @@
             <option value="Renewal Due">Renewal Due</option>
             <option value="Long Lapsed">Long Lapsed</option>
             <option value="Moved Out">Moved Out</option>
+            <option value="Deleted">Deleted</option>
           </select>
         </th>
         <th>
@@ -147,6 +149,7 @@
             <option value="Expired">Expired</option>
             <option value="Lapsed">Lapsed</option>
             <option value="Moved Out">Moved Out</option>
+            <option value="Deleted">Deleted</option>
           </select>
         </th>
         <th>
@@ -240,7 +243,7 @@
         <label class="span-2">Notes / Remarks<input type="text" id="fieldNotes" /></label>
       </div>
       <div class="modal-actions">
-        <button type="button" id="btnDeleteMember" class="btn btn-ghost btn-danger-text" style="display:none;">Delete Member</button>
+        <button type="button" id="btnDeleteMember" class="btn btn-ghost btn-danger-text" style="display:none;">Mark as Deleted</button>
         <div class="modal-actions-right">
           <button type="button" id="btnCancelModal" class="btn btn-ghost">Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
@@ -353,10 +356,16 @@
     <div class="modal-body">
       <p class="hint">Anyone listed here can sign in and see/edit member data. Admins can add or remove people.</p>
       <div id="accessUserList" class="reminder-recipient-list"></div>
-      <form id="addAccessForm" class="access-add-row">
-        <input type="email" id="newAccessEmail" placeholder="email@example.com" required />
-        <label class="access-admin-check"><input type="checkbox" id="newAccessIsAdmin" /> Admin</label>
-        <button type="submit" class="btn btn-primary">Add</button>
+      <form id="addAccessForm" class="access-add-form">
+        <div class="access-add-row">
+          <input type="text" id="newAccessName" placeholder="Full name" required />
+          <input type="text" id="newAccessPosition" placeholder="Board position, e.g. Treasurer" />
+        </div>
+        <div class="access-add-row">
+          <input type="email" id="newAccessEmail" placeholder="email@example.com" required />
+          <label class="access-admin-check"><input type="checkbox" id="newAccessIsAdmin" /> Admin</label>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
       </form>
     </div>
   </div>
