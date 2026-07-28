@@ -88,10 +88,12 @@
         <button type="button" class="loc-toggle-btn" data-country="usa">USA</button>
       </div>
     </div>
-    <div class="location-chart-wrap">
-      <canvas id="locationChartCanvas"></canvas>
+    <div class="location-map-wrap">
+      <div id="locationMapContainer" class="location-map-container"></div>
+      <div id="locationMapTooltip" class="map-tooltip" style="display:none;"></div>
     </div>
-    <p class="hint chart-hint">Click a bar to filter the table below by that place.</p>
+    <div class="map-legend" id="locationMapLegend"></div>
+    <p class="hint chart-hint" id="locationMapNote">Click a region to filter the table below by that place.</p>
   </div>
 </section>
 
@@ -114,6 +116,7 @@
   <div class="toolbar-row">
     <input type="text" id="searchBox" placeholder="Search by name, email, phone, address, notes..." />
     <button id="btnClearFilters" class="btn btn-ghost">Clear all filters</button>
+    <span id="mapRegionFilterChip" class="map-region-chip" style="display:none;"></span>
   </div>
 
   <div class="toolbar-row toolbar-row-downloads">
@@ -393,6 +396,7 @@
 <script src="lib/supabase.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/chart.min.js"></script>
+<script src="lib/d3.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>

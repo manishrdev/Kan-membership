@@ -264,15 +264,18 @@ const US_STATE_ABBR = new Set([
 const STREET_SUFFIX_RE = /^(dr|drive|rd|road|ln|lane|ct|court|st|street|ave|avenue|blvd|boulevard|cir|circle|ter|terrace|terr|pl|place|way|pkwy|parkway|trl|trail|hwy|highway|sq|square|xing|crossing|pass|run|walk|path|loop|row|pike|apt|unit|suite|ste)\.?$/i;
 
 function stripTrailingZip(s) {
-  return s.replace(/\s*\b\d{5}(-\d{4})?\s*$/, "").trim();
+  return s.replace(/\s*\b\d{4,6}(-\d{4})?\s*$/, "").trim();
 }
 function stripTrailingState(s) {
   const m = s.match(/^(.*?)[\s,]+([A-Za-z]{2})$/);
   if (m && US_STATE_ABBR.has(m[2].toUpperCase())) return m[1].trim();
+  const m2 = s.match(/^(.*?)[\s,]+(tennessee)$/i);
+  if (m2) return m2[1].trim();
   return s;
 }
 function isBareState(s) {
-  return US_STATE_ABBR.has(String(s).trim().toUpperCase());
+  const t = String(s).trim();
+  return US_STATE_ABBR.has(t.toUpperCase()) || /^tennessee$/i.test(t);
 }
 function looksLikeStreetFragment(s) {
   if (!s) return true;
@@ -299,13 +302,13 @@ function extractUsCityName(address) {
   if (!address) return null;
   let s = String(address).trim();
   if (!s) return null;
-  s = s.replace(/,?\s*(USA|U\.S\.A\.?|United States)\s*$/i, "").trim();
+  s = s.replace(/,?\s*(USA|U\.S\.A\.?|United States|US)\s*$/i, "").trim();
   const parts = s.split(",").map(p => p.trim()).filter(Boolean);
   if (parts.length === 0) return null;
 
   if (parts.length === 1) {
     const candidate = stripTrailingState(stripTrailingZip(parts[0]));
-    if (!candidate || isBareState(candidate) || looksLikeStreetFragment(candidate)) return null;
+    if (!candidate || isBareState(candidate) || looksLikeStreetFragment(candidate) || /^tennessee$/i.test(candidate)) return null;
     return normalizePlaceKey(candidate);
   }
 
@@ -319,24 +322,89 @@ function extractUsCityName(address) {
   }
   return null;
 }
-function buildLocationCounts(country) {
-  const counts = new Map(); // lowercase key -> { display, count }
+// ---------- place -> region lookups (built from the real member data) ----------
+// Keys are lowercase place names as extracted by normalizePlaceKey/extractUsCityName.
+// Anything not listed here just doesn't get a home on the map (shown as an
+// "outside the map" count instead of guessed at) rather than risk coloring
+// the wrong district/county.
+const KERALA_DISTRICT_MAP = {
+  "trivandrum": "Thiruvananthapuram",
+  "thiruvananthapuram": "Thiruvananthapuram",
+  "idukki": "Idukki",
+  "kozhencherry": "Pathanamthitta",
+  "palakkad": "Palakkad",
+  "kodungallur": "Thrissur",
+  "vayalar": "Alappuzha",
+  "kothamangalam": "Ernakulam",
+  "ettumanoor": "Kottayam",
+  "kuravilangad": "Kottayam",
+  "moozhikulangara": "Kottayam",
+  "alleppey": "Alappuzha",
+  "vazhakulam": "Ernakulam",
+  "wayanad": "Wayanad",
+  "kannur": "Kannur",
+  "kochi": "Ernakulam",
+  "kollam": "Kollam",
+  "kozhikode": "Kozhikode",
+  "calicut": "Kozhikode",
+  "thrissur": "Thrissur",
+  "trichur": "Thrissur",
+  "malappuram": "Malappuram",
+  "kottayam": "Kottayam",
+  "kasaragod": "Kasaragod",
+  "ernakulam": "Ernakulam",
+  "pathanamthitta": "Pathanamthitta",
+  "alappuzha": "Alappuzha",
+};
+const TN_COUNTY_MAP = {
+  "franklin": "Williamson",
+  "fanklin": "Williamson",
+  "nashville": "Davidson",
+  "nashvill": "Davidson",
+  "brentwood": "Williamson",
+  "mount juliet": "Wilson",
+  "mt juliet": "Wilson",
+  "mt. juliet": "Wilson",
+  "hermitage": "Davidson",
+  "hendersonville": "Sumner",
+  "nolensville": "Williamson",
+  "clarksville": "Montgomery",
+  "gallatin": "Sumner",
+  "lebanon": "Wilson",
+  "spring hill": "Williamson",
+  "springhill": "Williamson",
+  "murfreesboro": "Rutherford",
+  "madison": "Davidson",
+  "thompsons station": "Williamson",
+  "cookeville": "Putnam",
+  "goodlettsville": "Davidson",
+  "old hickory": "Davidson",
+  "antioch": "Davidson",
+  "smyrna": "Rutherford",
+  "la vergne": "Rutherford",
+  "dickson": "Dickson",
+  "columbia": "Maury",
+};
+
+function regionForMember(m, country) {
+  const place = country === "india" ? normalizePlaceKey(m.nativePlace) : extractUsCityName(m.address);
+  if (!place) return null;
+  const map = country === "india" ? KERALA_DISTRICT_MAP : TN_COUNTY_MAP;
+  return map[place.toLowerCase()] || null;
+}
+
+function buildRegionCounts(country) {
+  const counts = new Map(); // region name -> count
+  let unmapped = 0;
   members.filter(m => !isDeleted(m)).forEach(m => {
-    const name = country === "india" ? normalizePlaceKey(m.nativePlace) : extractUsCityName(m.address);
-    if (!name) return;
-    const key = name.toLowerCase();
-    if (!counts.has(key)) counts.set(key, { display: name, count: 0 });
-    counts.get(key).count++;
+    const region = regionForMember(m, country);
+    if (!region) {
+      if ((country === "india" ? m.nativePlace : m.address)) unmapped++;
+      return;
+    }
+    counts.set(region, (counts.get(region) || 0) + 1);
   });
-  let list = Array.from(counts.values()).sort((a, b) => b.count - a.count);
-  const TOP_N = 12;
-  if (list.length > TOP_N) {
-    const top = list.slice(0, TOP_N);
-    const otherCount = list.slice(TOP_N).reduce((s, x) => s + x.count, 0);
-    if (otherCount > 0) top.push({ display: "Other", count: otherCount });
-    list = top;
-  }
-  return list;
+  return { counts, unmapped };
 }
 
 // ---------- filtering / sorting ----------
@@ -370,6 +438,7 @@ function getFiltered() {
     if (fCategory && m.category !== fCategory) return false;
     if (fStatus && m.status !== fStatus) return false;
     if (fType && m.type !== fType) return false;
+    if (mapRegionFilter && regionForMember(m, mapRegionFilter.country) !== mapRegionFilter.region) return false;
     if (fPhone === "has" && !hasPhone(m)) return false;
     if (fPhone === "missing" && hasPhone(m)) return false;
     if (fEmail === "has" && !hasEmail(m)) return false;
@@ -439,8 +508,10 @@ function render() {
         <td>${escapeHtml(m.notes || "")}</td>
         <td>${badgeForReminder(m)}</td>
         <td class="row-actions">
-          <button class="edit-btn" data-id="${m.id}">Edit</button>
-          <button class="danger delete-btn" data-id="${m.id}">Delete</button>
+          ${isAdmin ? `
+            <button class="edit-btn" data-id="${m.id}">Edit</button>
+            <button class="danger delete-btn" data-id="${m.id}">Delete</button>
+          ` : `<span class="row-actions-locked" title="Only admins can edit or delete members">—</span>`}
         </td>
       </tr>
     `).join("");
@@ -463,7 +534,7 @@ function renderStats() {
   };
   document.getElementById("donutTotalValue").textContent = total;
   renderCategoryChart(categoryCounts);
-  renderLocationChart();
+  renderLocationMap();
   renderStatChips();
 }
 
@@ -501,8 +572,11 @@ function renderStatChips() {
 // ---------- charts ----------
 
 let categoryChart = null;
-let locationChart = null;
 let locationChartCountry = "india";
+let mapRegionFilter = null; // { country: "india"|"usa", region: "<district or county name>" } | null
+let tnCountiesGeo = null;
+let keralaDistrictsGeo = null;
+let geoDataLoadPromise = null;
 
 const CATEGORY_COLORS = { "Active": "#178a82", "Renewal Due": "#b8860b", "Long Lapsed": "#7a2048", "Moved Out": "#6b3fa0" };
 
@@ -551,63 +625,130 @@ function renderCategoryChart(counts) {
   }
 }
 
-function renderLocationChart() {
-  const canvas = document.getElementById("locationChartCanvas");
-  if (!canvas || typeof Chart === "undefined") return;
-  const list = buildLocationCounts(locationChartCountry);
-  const labels = list.map(x => x.display);
-  const data = list.map(x => x.count);
-  const barColor = locationChartCountry === "india" ? "#e2711d" : "#1b2a55";
+async function loadGeoData() {
+  if (geoDataLoadPromise) return geoDataLoadPromise;
+  geoDataLoadPromise = Promise.all([
+    fetch("data/kerala_districts.geojson").then(r => r.json()).catch(() => null),
+    fetch("data/tn_counties.geojson").then(r => r.json()).catch(() => null),
+  ]).then(([kerala, tn]) => { keralaDistrictsGeo = kerala; tnCountiesGeo = tn; });
+  return geoDataLoadPromise;
+}
+
+function regionDisplayName(feature, country) {
+  return country === "india" ? feature.properties.DISTRICT : feature.properties.name;
+}
+
+function updateMapRegionFilterChip() {
+  const chip = document.getElementById("mapRegionFilterChip");
+  if (!chip) return;
+  if (!mapRegionFilter) { chip.style.display = "none"; chip.textContent = ""; return; }
+  const label = mapRegionFilter.country === "india" ? `${mapRegionFilter.region} district` : `${mapRegionFilter.region} County`;
+  chip.style.display = "inline-flex";
+  chip.textContent = `Map filter: ${label} ✕`;
+}
+
+async function renderLocationMap() {
+  const container = document.getElementById("locationMapContainer");
+  const noteEl = document.getElementById("locationMapNote");
+  if (!container || typeof d3 === "undefined") return;
+  updateMapRegionFilterChip();
 
   try {
-    if (locationChart) {
-      locationChart.data.labels = labels;
-      locationChart.data.datasets[0].data = data;
-      locationChart.data.datasets[0].backgroundColor = barColor;
-      locationChart.update();
+    await loadGeoData();
+    const geo = locationChartCountry === "india" ? keralaDistrictsGeo : tnCountiesGeo;
+    if (!geo || !geo.features) {
+      container.innerHTML = "";
+      if (noteEl) noteEl.textContent = "Map data couldn't be loaded.";
       return;
     }
 
-    locationChart = new Chart(canvas, {
-      type: "bar",
-      data: { labels, datasets: [{ data, backgroundColor: barColor, borderRadius: 4, maxBarThickness: 18 }] },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => ` ${ctx.parsed.x} member${ctx.parsed.x === 1 ? "" : "s"}` } },
-        },
-        scales: {
-          x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } },
-          y: { ticks: { font: { size: 11 } } },
-        },
-        onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? "pointer" : "default"; },
-        onClick: (evt, elements) => {
-          if (!elements.length) return;
-          const idx = elements[0].index;
-          const label = locationChart.data.labels[idx];
-          if (!label || label === "Other") return;
-          const el = document.getElementById("colf-address");
-          el.value = el.value === label ? "" : label;
-          render();
-          const wrap = document.querySelector(".table-wrap");
-          if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        },
-      },
-    });
+    const { counts, unmapped } = buildRegionCounts(locationChartCountry);
+    const max = Math.max(1, ...Array.from(counts.values()));
+    const color = locationChartCountry === "india"
+      ? d3.scaleSequential(d3.interpolateOranges).domain([0, max])
+      : d3.scaleSequential(d3.interpolateBlues).domain([0, max]);
+
+    container.innerHTML = "";
+    const width = container.clientWidth || 380;
+    const height = 230;
+    const svg = d3.select(container).append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("width", "100%")
+      .attr("height", height)
+      .attr("role", "img")
+      .attr("aria-label", locationChartCountry === "india" ? "Map of Kerala districts by member count" : "Map of Tennessee counties by member count");
+
+    const projection = d3.geoMercator().fitSize([width, height], geo);
+    const path = d3.geoPath(projection);
+    const tooltip = document.getElementById("locationMapTooltip");
+    const activeRegion = mapRegionFilter && mapRegionFilter.country === locationChartCountry ? mapRegionFilter.region : null;
+
+    svg.selectAll("path")
+      .data(geo.features)
+      .join("path")
+      .attr("d", path)
+      .attr("fill", d => {
+        const count = counts.get(regionDisplayName(d, locationChartCountry)) || 0;
+        return count > 0 ? color(count) : "#eef0f6";
+      })
+      .attr("stroke", d => (regionDisplayName(d, locationChartCountry) === activeRegion ? "#1b2a55" : "#fff"))
+      .attr("stroke-width", d => (regionDisplayName(d, locationChartCountry) === activeRegion ? 2 : 0.75))
+      .style("cursor", "pointer")
+      .on("mousemove", (event, d) => {
+        if (!tooltip) return;
+        const name = regionDisplayName(d, locationChartCountry);
+        const count = counts.get(name) || 0;
+        tooltip.style.display = "block";
+        tooltip.textContent = `${name}: ${count} member${count === 1 ? "" : "s"}`;
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = (event.clientX - rect.left + 12) + "px";
+        tooltip.style.top = (event.clientY - rect.top + 12) + "px";
+      })
+      .on("mouseleave", () => { if (tooltip) tooltip.style.display = "none"; })
+      .on("click", (event, d) => {
+        const name = regionDisplayName(d, locationChartCountry);
+        if (mapRegionFilter && mapRegionFilter.country === locationChartCountry && mapRegionFilter.region === name) {
+          mapRegionFilter = null;
+        } else {
+          mapRegionFilter = { country: locationChartCountry, region: name };
+        }
+        render();
+        renderLocationMap();
+        const wrap = document.querySelector(".table-wrap");
+        if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
+    renderLocationMapLegend(max, color);
+
+    if (noteEl) {
+      noteEl.textContent = unmapped > 0
+        ? `Click a region to filter the table below. ${unmapped} member${unmapped === 1 ? "" : "s"} outside this map's area aren't shown here.`
+        : "Click a region to filter the table below by that place.";
+    }
   } catch (e) {
-    console.error("Could not render location chart:", e);
+    console.error("Could not render location map:", e);
   }
+}
+
+function renderLocationMapLegend(max, color) {
+  const legend = document.getElementById("locationMapLegend");
+  if (!legend) return;
+  const steps = 5;
+  let swatches = "";
+  for (let i = 0; i <= steps; i++) {
+    const v = Math.round((max / steps) * i);
+    swatches += `<span class="map-legend-swatch" style="background:${v > 0 ? color(v) : "#eef0f6"}"></span>`;
+  }
+  legend.innerHTML = `<div class="map-legend-scale">${swatches}</div><div class="map-legend-labels"><span>0</span><span>${max} members</span></div>`;
 }
 
 // ---------- modal / CRUD ----------
 
 function openModal(member) {
+  if (!isAdmin) { alert(member ? "Only admins can edit members." : "Only admins can add members."); return; }
   editingId = member ? member.id : null;
   document.getElementById("modalTitle").textContent = member ? "Edit Member" : "Add Member";
-  document.getElementById("btnDeleteMember").style.display = member ? "inline-block" : "none";
+  document.getElementById("btnDeleteMember").style.display = (member && isAdmin) ? "inline-block" : "none";
   document.getElementById("fieldId").value = member ? member.id : "";
   document.getElementById("fieldName").value = member ? member.name || "" : "";
   document.getElementById("fieldStatus").value = member ? member.status || "Annual" : "Annual";
@@ -649,9 +790,11 @@ async function handleFormSubmit(e) {
   if (!data.name) return;
 
   if (editingId) {
+    if (!isAdmin) { alert("Only admins can edit members."); return; }
     const { error } = await supa.from("members").update(memberToRowPayload(data)).eq("id", editingId);
     if (error) { alert("Could not save: " + error.message); return; }
   } else {
+    if (!isAdmin) { alert("Only admins can add members."); return; }
     const { error } = await supa.from("members").insert(memberToRowPayload(data));
     if (error) { alert("Could not save: " + error.message); return; }
   }
@@ -662,6 +805,7 @@ async function handleFormSubmit(e) {
 }
 
 async function deleteMember(id) {
+  if (!isAdmin) { alert("Only admins can delete members."); return; }
   const m = members.find(x => x.id === id);
   if (!m) return;
   if (isDeleted(m)) { alert(`"${m.name}" is already marked Deleted.`); return; }
@@ -1019,6 +1163,7 @@ async function handleAuthedSession(session) {
     ? currentUser.name + (currentUser.position ? " — " + currentUser.position : "")
     : currentUser.email; // fall back to email only until this person's profile is filled in from Manage Access
   document.getElementById("btnManageAccess").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("btnAddMember").style.display = isAdmin ? "inline-block" : "none";
 
   await loadAllData();
   render();
@@ -1091,7 +1236,14 @@ function attachEvents() {
   document.getElementById("btnClearFilters").addEventListener("click", () => {
     document.getElementById("searchBox").value = "";
     columnFilterIds.forEach(id => { document.getElementById(id).value = ""; });
+    mapRegionFilter = null;
     render();
+    renderLocationMap();
+  });
+  document.getElementById("mapRegionFilterChip").addEventListener("click", () => {
+    mapRegionFilter = null;
+    render();
+    renderLocationMap();
   });
 
   document.getElementById("statusChips").addEventListener("click", (e) => {
@@ -1121,7 +1273,7 @@ function attachEvents() {
     document.querySelectorAll(".loc-toggle-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     locationChartCountry = btn.dataset.country;
-    renderLocationChart();
+    renderLocationMap();
   });
 
   document.querySelectorAll("thead th[data-sort]").forEach(th => {

@@ -120,7 +120,62 @@ body {
 .loc-toggle-btn:hover { color: var(--ink); }
 .loc-toggle-btn.active { background: var(--primary); color: #fff; }
 .loc-toggle-btn.active:hover { color: #fff; }
-.location-chart-wrap { height: 220px; }
+.location-map-wrap {
+  position: relative;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.location-map-container { width: 100%; height: 100%; }
+.location-map-container svg { display: block; margin: 0 auto; max-width: 100%; max-height: 100%; }
+.location-map-container path {
+  stroke: #fff;
+  stroke-width: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.location-map-container path:hover { opacity: 0.8; }
+.location-map-container path.region-active { stroke: var(--primary); stroke-width: 2px; }
+
+.map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--ink, #1a1a2e);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 20;
+}
+
+.map-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.map-legend-scale { display: flex; gap: 2px; }
+.map-legend-swatch { width: 16px; height: 10px; border-radius: 2px; }
+.map-legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); width: 100%; }
+
+.map-region-chip {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.map-region-chip:hover { opacity: 0.85; }
 
 @media (max-width: 900px) {
   .dashboard-top { grid-template-columns: 1fr; }
@@ -274,6 +329,7 @@ tbody tr.row-deleted:hover { opacity: 0.8; }
 }
 .row-actions button:hover { text-decoration: underline; }
 .row-actions button.danger { color: var(--maroon); }
+.row-actions-locked { color: var(--muted); font-size: 12px; cursor: default; }
 
 .empty-state { padding: 30px; text-align: center; color: var(--muted); }
 
