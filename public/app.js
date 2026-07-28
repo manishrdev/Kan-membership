@@ -1051,9 +1051,19 @@ function attachEvents() {
     e.preventDefault();
     const email = document.getElementById("loginEmail").value.trim();
     const statusEl = document.getElementById("loginStatus");
-    statusEl.textContent = "Sending login link…";
+    const submitBtn = document.querySelector("#loginForm button[type=submit]");
+    statusEl.className = "auth-status";
+    statusEl.textContent = "Sending your login link…";
+    submitBtn.disabled = true;
     const { error } = await supa.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
-    statusEl.textContent = error ? "Error: " + error.message : `Check ${email} for a login link.`;
+    submitBtn.disabled = false;
+    if (error) {
+      statusEl.className = "auth-status auth-status-error";
+      statusEl.textContent = "Couldn't send the link: " + error.message;
+    } else {
+      statusEl.className = "auth-status auth-status-ok";
+      statusEl.textContent = `Check ${email} for your login link. It may take a minute to arrive — check spam too.`;
+    }
   });
 
   document.getElementById("btnSignOut").addEventListener("click", () => supa.auth.signOut());

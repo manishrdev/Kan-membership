@@ -11,20 +11,37 @@
 <!-- ======================= LOGIN SCREEN ======================= -->
 <div id="loginScreen" class="auth-screen">
   <div class="auth-card">
-    <h1>KAN Membership Tracker</h1>
-    <p class="hint">Enter your email and we'll send you a one-time login link. No password to remember.</p>
+    <div class="auth-brand">
+      <img src="assets/kan-logo.jpg" alt="KAN logo" class="auth-logo" onerror="this.style.display='none'" />
+      <div class="auth-brand-text">
+        <div class="auth-brand-org">Kerala Association of Nashville</div>
+        <h1>Membership Tracker</h1>
+      </div>
+    </div>
+    <p class="auth-lede">Sign in with your board email to view and manage member data.</p>
     <form id="loginForm">
+      <label class="auth-field-label" for="loginEmail">Email address</label>
       <input type="email" id="loginEmail" placeholder="you@example.com" required />
-      <button type="submit" class="btn btn-primary">Send me a login link</button>
+      <button type="submit" class="btn btn-primary auth-submit">Send me a login link</button>
     </form>
-    <p id="loginStatus" class="hint"></p>
+    <p id="loginStatus" class="auth-status"></p>
+    <div class="auth-security-note">
+      <span class="auth-security-icon">&#128274;</span>
+      <span>No password to create or remember — we email you a secure, one-time link instead. Only board members added under Manage Access can sign in.</span>
+    </div>
   </div>
 </div>
 
 <!-- ================= "NOT ON THE LIST" SCREEN ================= -->
 <div id="noAccessScreen" class="auth-screen" style="display:none;">
   <div class="auth-card">
-    <h1>Access needed</h1>
+    <div class="auth-brand">
+      <img src="assets/kan-logo.jpg" alt="KAN logo" class="auth-logo" onerror="this.style.display='none'" />
+      <div class="auth-brand-text">
+        <div class="auth-brand-org">Kerala Association of Nashville</div>
+        <h1>Access needed</h1>
+      </div>
+    </div>
     <p>You're signed in as <strong id="noAccessEmail"></strong>, but this account isn't authorized yet.</p>
     <p class="hint">Ask an existing admin to add your email from the app's Manage Access screen, then reload this page.</p>
     <button id="btnSignOutNoAccess" class="btn btn-ghost">Sign out</button>
