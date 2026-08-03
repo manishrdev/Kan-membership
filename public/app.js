@@ -161,17 +161,45 @@ async function loadAllData() {
   });
 
   members = (memberRows || []).map(row => rowToMember(row, historyByMember));
+  // Recompute category live on every load — see categoryFor() — so renewal
+  // status is always accurate for today's date, not just whatever was
+  // stored the last time someone happened to edit the record.
+  members.forEach(m => { m.category = categoryFor(m); });
 }
 
 // ---------- helpers (same logic as the local app) ----------
 
-function categoryFor(status) {
-  if (["Life", "Annual", "Biennial", "Active"].includes(status)) return "Active";
+// Membership runs on a calendar year: renewing in year Y covers Jan-Dec of Y
+// (Jan-Dec of Y and Y+1 for Biennial). Category is derived from the renewal
+// year + today's date rather than trusting whatever status/category was last
+// saved, so a member who simply stops renewing automatically ages from
+// Active -> Renewal Due -> Long Lapsed without anyone having to hand-edit
+// their record. Life members never expire; Moved Out/Deleted are manual
+// overrides that always win regardless of renewal year.
+const RENEWAL_GRACE_YEARS = 2; // years overdue still shown as "Renewal Due" before dropping to "Long Lapsed"
+
+function yearFromDateStr(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{4})/);
+  return m ? Number(m[1]) : null;
+}
+
+function categoryFor(member) {
+  const status = member && member.status;
   if (status === "Moved Out") return "Moved Out";
   if (status === "Deleted") return "Deleted";
-  if (status === "Expired") return "Renewal Due";
-  if (status === "Lapsed") return "Long Lapsed";
-  return "Renewal Due";
+  if (status === "Life") return "Active";
+
+  const cadenceYears = status === "Biennial" ? 2 : 1;
+  const baseYear = Number(member && member.yearRenewed) || yearFromDateStr(member && member.membershipPaymentDate);
+  if (!baseYear) return "Renewal Due"; // no renewal history on file at all — needs attention
+
+  const validThroughYear = baseYear + cadenceYears - 1; // membership covers Jan 1 - Dec 31 of this year
+  const overdue = new Date().getFullYear() - validThroughYear;
+
+  if (overdue <= 0) return "Active";
+  if (overdue <= RENEWAL_GRACE_YEARS) return "Renewal Due";
+  return "Long Lapsed";
 }
 function isDeleted(m) { return m.category === "Deleted"; }
 
@@ -775,7 +803,6 @@ async function handleFormSubmit(e) {
   const data = {
     name: document.getElementById("fieldName").value.trim(),
     status,
-    category: categoryFor(status),
     type: document.getElementById("fieldType").value,
     membershipPaymentDate: document.getElementById("fieldPaymentDate").value || null,
     yearRenewed: document.getElementById("fieldYearRenewed").value ? Number(document.getElementById("fieldYearRenewed").value) : null,
@@ -787,6 +814,9 @@ async function handleFormSubmit(e) {
     childrenNames: document.getElementById("fieldChildrenNames").value.trim() || null,
     notes: document.getElementById("fieldNotes").value.trim() || null,
   };
+  // category depends on status + yearRenewed + membershipPaymentDate, all of
+  // which are already on `data` above — compute it now that they're set.
+  data.category = categoryFor(data);
   if (!data.name) return;
 
   if (editingId) {
