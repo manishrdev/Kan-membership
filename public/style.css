@@ -177,6 +177,26 @@ body {
 }
 .map-region-chip:hover { opacity: 0.85; }
 
+.map-drill-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  font-size: 11px;
+}
+.map-drill-back {
+  border: none;
+  background: #eef0f6;
+  color: var(--primary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.map-drill-back:hover { background: #e0e4f0; }
+.map-drill-current { color: var(--muted); font-weight: 600; }
+
 @media (max-width: 900px) {
   .dashboard-top { grid-template-columns: 1fr; }
 }

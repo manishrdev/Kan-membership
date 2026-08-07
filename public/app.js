@@ -384,41 +384,69 @@ const KERALA_DISTRICT_MAP = {
   "pathanamthitta": "Pathanamthitta",
   "alappuzha": "Alappuzha",
 };
-const TN_COUNTY_MAP = {
-  "franklin": "Williamson",
-  "fanklin": "Williamson",
-  "nashville": "Davidson",
-  "nashvill": "Davidson",
-  "brentwood": "Williamson",
-  "mount juliet": "Wilson",
-  "mt juliet": "Wilson",
-  "mt. juliet": "Wilson",
-  "hermitage": "Davidson",
-  "hendersonville": "Sumner",
-  "nolensville": "Williamson",
-  "clarksville": "Montgomery",
-  "gallatin": "Sumner",
-  "lebanon": "Wilson",
-  "spring hill": "Williamson",
-  "springhill": "Williamson",
-  "murfreesboro": "Rutherford",
-  "madison": "Davidson",
-  "thompsons station": "Williamson",
-  "cookeville": "Putnam",
-  "goodlettsville": "Davidson",
-  "old hickory": "Davidson",
-  "antioch": "Davidson",
-  "smyrna": "Rutherford",
-  "la vergne": "Rutherford",
-  "dickson": "Dickson",
-  "columbia": "Maury",
+// Each entry carries the county (for the state-level choropleth) plus a
+// display name and approximate city-center coordinates (for the county
+// drill-down bubble map). Coordinates are city centers, not member addresses.
+const TN_PLACE_MAP = {
+  "franklin":           { county: "Williamson", city: "Franklin",           lat: 35.9251, lng: -86.8689 },
+  "fanklin":            { county: "Williamson", city: "Franklin",           lat: 35.9251, lng: -86.8689 },
+  "nashville":          { county: "Davidson",   city: "Nashville",          lat: 36.1627, lng: -86.7816 },
+  "nashvill":           { county: "Davidson",   city: "Nashville",          lat: 36.1627, lng: -86.7816 },
+  "brentwood":          { county: "Williamson", city: "Brentwood",          lat: 36.0331, lng: -86.7828 },
+  "mount juliet":       { county: "Wilson",     city: "Mount Juliet",       lat: 36.2001, lng: -86.5186 },
+  "mt juliet":          { county: "Wilson",     city: "Mount Juliet",       lat: 36.2001, lng: -86.5186 },
+  "mt. juliet":         { county: "Wilson",     city: "Mount Juliet",       lat: 36.2001, lng: -86.5186 },
+  "hermitage":          { county: "Davidson",   city: "Hermitage",          lat: 36.1806, lng: -86.6136 },
+  "hendersonville":     { county: "Sumner",     city: "Hendersonville",     lat: 36.3048, lng: -86.6200 },
+  "nolensville":        { county: "Williamson", city: "Nolensville",        lat: 35.9528, lng: -86.6717 },
+  "clarksville":        { county: "Montgomery", city: "Clarksville",        lat: 36.5298, lng: -87.3595 },
+  "gallatin":           { county: "Sumner",     city: "Gallatin",           lat: 36.3884, lng: -86.4470 },
+  "lebanon":            { county: "Wilson",     city: "Lebanon",            lat: 36.2081, lng: -86.2911 },
+  "spring hill":        { county: "Williamson", city: "Spring Hill",        lat: 35.7509, lng: -86.9297 },
+  "springhill":         { county: "Williamson", city: "Spring Hill",        lat: 35.7509, lng: -86.9297 },
+  "murfreesboro":       { county: "Rutherford", city: "Murfreesboro",       lat: 35.8456, lng: -86.3903 },
+  "madison":            { county: "Davidson",   city: "Madison",            lat: 36.2565, lng: -86.7028 },
+  "thompsons station":  { county: "Williamson", city: "Thompson's Station", lat: 35.7995, lng: -86.9127 },
+  "cookeville":         { county: "Putnam",     city: "Cookeville",         lat: 36.1628, lng: -85.5016 },
+  "goodlettsville":     { county: "Davidson",   city: "Goodlettsville",     lat: 36.3242, lng: -86.7128 },
+  "old hickory":        { county: "Davidson",   city: "Old Hickory",        lat: 36.2537, lng: -86.6403 },
+  "antioch":            { county: "Davidson",   city: "Antioch",            lat: 36.0501, lng: -86.6672 },
+  "smyrna":             { county: "Rutherford", city: "Smyrna",             lat: 35.9828, lng: -86.5186 },
+  "la vergne":          { county: "Rutherford", city: "La Vergne",          lat: 36.0154, lng: -86.5808 },
+  "dickson":            { county: "Dickson",    city: "Dickson",            lat: 36.0762, lng: -87.3861 },
+  "columbia":           { county: "Maury",      city: "Columbia",           lat: 35.6151, lng: -87.0353 },
 };
+
+// County-only view, kept for the existing state-level choropleth logic.
+const TN_COUNTY_MAP = Object.fromEntries(Object.entries(TN_PLACE_MAP).map(([k, v]) => [k, v.county]));
 
 function regionForMember(m, country) {
   const place = country === "india" ? normalizePlaceKey(m.nativePlace) : extractUsCityName(m.address);
   if (!place) return null;
   const map = country === "india" ? KERALA_DISTRICT_MAP : TN_COUNTY_MAP;
   return map[place.toLowerCase()] || null;
+}
+
+// USA-only: resolves a member's address to its known city (name + coords),
+// used for the county drill-down bubble map. Returns null for members whose
+// place isn't one of the mapped TN cities.
+function placeForMember(m) {
+  const place = extractUsCityName(m.address);
+  if (!place) return null;
+  return TN_PLACE_MAP[place.toLowerCase()] || null;
+}
+
+function buildCountyPlaceCounts(county) {
+  const counts = new Map(); // city display name -> { count, lat, lng }
+  members.filter(m => !isDeleted(m)).forEach(m => {
+    if (regionForMember(m, "usa") !== county) return;
+    const place = placeForMember(m);
+    if (!place) return;
+    const existing = counts.get(place.city);
+    if (existing) existing.count++;
+    else counts.set(place.city, { count: 1, lat: place.lat, lng: place.lng });
+  });
+  return counts;
 }
 
 function buildRegionCounts(country) {
@@ -466,7 +494,13 @@ function getFiltered() {
     if (fCategory && m.category !== fCategory) return false;
     if (fStatus && m.status !== fStatus) return false;
     if (fType && m.type !== fType) return false;
-    if (mapRegionFilter && regionForMember(m, mapRegionFilter.country) !== mapRegionFilter.region) return false;
+    if (mapRegionFilter) {
+      if (regionForMember(m, mapRegionFilter.country) !== mapRegionFilter.region) return false;
+      if (mapRegionFilter.place) {
+        const p = placeForMember(m);
+        if (!p || p.city !== mapRegionFilter.place) return false;
+      }
+    }
     if (fPhone === "has" && !hasPhone(m)) return false;
     if (fPhone === "missing" && hasPhone(m)) return false;
     if (fEmail === "has" && !hasEmail(m)) return false;
@@ -601,7 +635,8 @@ function renderStatChips() {
 
 let categoryChart = null;
 let locationChartCountry = "india";
-let mapRegionFilter = null; // { country: "india"|"usa", region: "<district or county name>" } | null
+let mapRegionFilter = null; // { country: "india"|"usa", region: "<district or county name>", place?: "<city name>" } | null
+let mapDrillCounty = null; // USA only: county name currently drilled into (city bubble view) | null
 let tnCountiesGeo = null;
 let keralaDistrictsGeo = null;
 let geoDataLoadPromise = null;
@@ -670,7 +705,12 @@ function updateMapRegionFilterChip() {
   const chip = document.getElementById("mapRegionFilterChip");
   if (!chip) return;
   if (!mapRegionFilter) { chip.style.display = "none"; chip.textContent = ""; return; }
-  const label = mapRegionFilter.country === "india" ? `${mapRegionFilter.region} district` : `${mapRegionFilter.region} County`;
+  let label;
+  if (mapRegionFilter.country === "india") {
+    label = `${mapRegionFilter.region} district`;
+  } else {
+    label = mapRegionFilter.place ? `${mapRegionFilter.region} County → ${mapRegionFilter.place}` : `${mapRegionFilter.region} County`;
+  }
   chip.style.display = "inline-flex";
   chip.textContent = `Map filter: ${label} ✕`;
 }
@@ -683,6 +723,12 @@ async function renderLocationMap() {
 
   try {
     await loadGeoData();
+
+    if (locationChartCountry === "usa" && mapDrillCounty) {
+      renderCountyDrillMap(container, noteEl);
+      return;
+    }
+
     const geo = locationChartCountry === "india" ? keralaDistrictsGeo : tnCountiesGeo;
     if (!geo || !geo.features) {
       container.innerHTML = "";
@@ -735,7 +781,11 @@ async function renderLocationMap() {
       .on("mouseleave", () => { if (tooltip) tooltip.style.display = "none"; })
       .on("click", (event, d) => {
         const name = regionDisplayName(d, locationChartCountry);
-        if (mapRegionFilter && mapRegionFilter.country === locationChartCountry && mapRegionFilter.region === name) {
+        if (locationChartCountry === "usa") {
+          // Drill into this county: show its cities/towns as a bubble map.
+          mapDrillCounty = name;
+          mapRegionFilter = { country: "usa", region: name };
+        } else if (mapRegionFilter && mapRegionFilter.country === locationChartCountry && mapRegionFilter.region === name) {
           mapRegionFilter = null;
         } else {
           mapRegionFilter = { country: locationChartCountry, region: name };
@@ -751,10 +801,138 @@ async function renderLocationMap() {
     if (noteEl) {
       noteEl.textContent = unmapped > 0
         ? `Click a region to filter the table below. ${unmapped} member${unmapped === 1 ? "" : "s"} outside this map's area aren't shown here.`
-        : "Click a region to filter the table below by that place.";
+        : locationChartCountry === "usa"
+          ? "Click a county to see its cities/towns and filter the table below."
+          : "Click a region to filter the table below by that place.";
     }
   } catch (e) {
     console.error("Could not render location map:", e);
+  }
+}
+
+// USA only: zoomed-in view of a single county's boundary with proportional
+// bubbles at each known city/town, sized by member count. Clicking a bubble
+// filters the table down to that specific place.
+function renderCountyDrillMap(container, noteEl) {
+  const county = mapDrillCounty;
+  const legend = document.getElementById("locationMapLegend");
+  if (legend) legend.innerHTML = "";
+  container.innerHTML = "";
+
+  const breadcrumb = document.createElement("div");
+  breadcrumb.className = "map-drill-breadcrumb";
+  breadcrumb.innerHTML = `<button type="button" class="map-drill-back" id="mapDrillBack">← Tennessee</button><span class="map-drill-current">${escapeHtml(county)} County</span>`;
+  container.appendChild(breadcrumb);
+  document.getElementById("mapDrillBack").addEventListener("click", () => {
+    mapDrillCounty = null;
+    mapRegionFilter = null;
+    render();
+    renderLocationMap();
+  });
+
+  const feature = (tnCountiesGeo.features || []).find(f => f.properties.name === county);
+  if (!feature) {
+    if (noteEl) noteEl.textContent = `No boundary data found for ${county} County.`;
+    return;
+  }
+
+  const placeCounts = buildCountyPlaceCounts(county);
+  const cities = Array.from(placeCounts.entries()); // [cityName, { count, lat, lng }]
+
+  const svgWrap = document.createElement("div");
+  svgWrap.style.flex = "1";
+  svgWrap.style.minHeight = "0";
+  container.appendChild(svgWrap);
+
+  const width = container.clientWidth || 380;
+  const height = 195;
+  const svg = d3.select(svgWrap).append("svg")
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("width", "100%")
+    .attr("height", height)
+    .attr("role", "img")
+    .attr("aria-label", `Map of ${county} County by city`);
+
+  const projection = d3.geoMercator().fitSize([width - 20, height - 20], feature);
+  const path = d3.geoPath(projection);
+
+  svg.append("g")
+    .attr("transform", "translate(10,10)")
+    .append("path")
+    .datum(feature)
+    .attr("d", path)
+    .attr("fill", "#eef0f6")
+    .attr("stroke", "#1b2a55")
+    .attr("stroke-width", 1.25);
+
+  const tooltip = document.getElementById("locationMapTooltip");
+  const maxCount = Math.max(1, ...cities.map(([, v]) => v.count));
+  const radius = d3.scaleSqrt().domain([0, maxCount]).range([5, 22]);
+  const activePlace = mapRegionFilter && mapRegionFilter.place;
+
+  const bubbleLayer = svg.append("g").attr("transform", "translate(10,10)");
+
+  const bubbles = bubbleLayer.selectAll("g.city-bubble")
+    .data(cities)
+    .join("g")
+    .attr("class", "city-bubble")
+    .attr("transform", ([, v]) => {
+      const [x, y] = projection([v.lng, v.lat]);
+      return `translate(${x},${y})`;
+    })
+    .style("cursor", "pointer");
+
+  bubbles.append("circle")
+    .attr("r", ([, v]) => radius(v.count))
+    .attr("fill", "#2f6fb0")
+    .attr("fill-opacity", 0.78)
+    .attr("stroke", ([name]) => (name === activePlace ? "#1b2a55" : "#fff"))
+    .attr("stroke-width", ([name]) => (name === activePlace ? 2.5 : 1.25));
+
+  bubbles.append("text")
+    .text(([, v]) => v.count)
+    .attr("text-anchor", "middle")
+    .attr("dy", "0.35em")
+    .attr("fill", "#fff")
+    .attr("font-size", "11px")
+    .attr("font-weight", "700")
+    .style("pointer-events", "none");
+
+  bubbles.append("text")
+    .text(([name]) => name)
+    .attr("text-anchor", "middle")
+    .attr("dy", ([, v]) => -(radius(v.count) + 6))
+    .attr("fill", "#1b2a55")
+    .attr("font-size", "10px")
+    .attr("font-weight", "600")
+    .style("pointer-events", "none");
+
+  bubbles
+    .on("mousemove", (event, [name, v]) => {
+      if (!tooltip) return;
+      tooltip.style.display = "block";
+      tooltip.textContent = `${name}: ${v.count} member${v.count === 1 ? "" : "s"}`;
+      const rect = container.getBoundingClientRect();
+      tooltip.style.left = (event.clientX - rect.left + 12) + "px";
+      tooltip.style.top = (event.clientY - rect.top + 12) + "px";
+    })
+    .on("mouseleave", () => { if (tooltip) tooltip.style.display = "none"; })
+    .on("click", (event, [name]) => {
+      if (mapRegionFilter && mapRegionFilter.place === name) {
+        mapRegionFilter = { country: "usa", region: county };
+      } else {
+        mapRegionFilter = { country: "usa", region: county, place: name };
+      }
+      render();
+      renderLocationMap();
+      const wrap = document.querySelector(".table-wrap");
+      if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+
+  if (noteEl) {
+    noteEl.textContent = cities.length > 0
+      ? "Click a city to filter the table below by that place. Bubble size = member count."
+      : `No members mapped to a specific city within ${county} County yet.`;
   }
 }
 
@@ -1267,11 +1445,19 @@ function attachEvents() {
     document.getElementById("searchBox").value = "";
     columnFilterIds.forEach(id => { document.getElementById(id).value = ""; });
     mapRegionFilter = null;
+    mapDrillCounty = null;
     render();
     renderLocationMap();
   });
   document.getElementById("mapRegionFilterChip").addEventListener("click", () => {
-    mapRegionFilter = null;
+    // If we're drilled into a county, first click on the chip should just
+    // step back out to the state map rather than clearing everything blind.
+    if (mapRegionFilter && mapRegionFilter.place) {
+      mapRegionFilter = { country: mapRegionFilter.country, region: mapRegionFilter.region };
+    } else {
+      mapRegionFilter = null;
+      mapDrillCounty = null;
+    }
     render();
     renderLocationMap();
   });
@@ -1303,6 +1489,7 @@ function attachEvents() {
     document.querySelectorAll(".loc-toggle-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     locationChartCountry = btn.dataset.country;
+    mapDrillCounty = null;
     renderLocationMap();
   });
 
