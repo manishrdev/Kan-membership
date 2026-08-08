@@ -208,18 +208,65 @@ function attachEvents() {
     const email = document.getElementById("loginEmail").value.trim();
     const statusEl = document.getElementById("loginStatus");
     const submitBtn = document.querySelector("#loginForm button[type=submit]");
+    const otpForm = document.getElementById("otpForm");
+    const otpStatusEl = document.getElementById("otpStatus");
     statusEl.className = "auth-status";
     statusEl.textContent = "Sending your login link…";
+    otpStatusEl.textContent = "";
     submitBtn.disabled = true;
     const { error } = await supa.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     submitBtn.disabled = false;
     if (error) {
       statusEl.className = "auth-status auth-status-error";
       statusEl.textContent = "Couldn't send the link: " + error.message;
+      otpForm.style.display = "none";
     } else {
       statusEl.className = "auth-status auth-status-ok";
-      statusEl.textContent = `Check ${email} for your login link. It may take a minute to arrive — check spam too.`;
+      statusEl.textContent = `Check ${email} for your login link and 6-digit code. It may take a minute to arrive — check spam too.`;
+      // The link only works from a regular browser tab — on a home-screen
+      // icon it opens Safari instead (an iOS limitation), so surface the
+      // code entry step every time a link is sent, not just on request.
+      otpForm.style.display = "flex";
+      const codeInput = document.getElementById("otpCode");
+      codeInput.value = "";
+      codeInput.focus();
     }
+  });
+
+  document.getElementById("otpForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("loginEmail").value.trim();
+    const code = document.getElementById("otpCode").value.trim();
+    const statusEl = document.getElementById("otpStatus");
+    const submitBtn = document.querySelector("#otpForm button[type=submit]");
+    if (!code) return;
+    statusEl.className = "auth-status";
+    statusEl.textContent = "Verifying…";
+    submitBtn.disabled = true;
+    const { error } = await supa.auth.verifyOtp({ email, token: code, type: "email" });
+    submitBtn.disabled = false;
+    if (error) {
+      statusEl.className = "auth-status auth-status-error";
+      statusEl.textContent = "That code didn't work: " + error.message;
+      return;
+    }
+    // On success this sets the session, which fires onAuthStateChange below
+    // and takes over — no manual redirect needed.
+    statusEl.className = "auth-status auth-status-ok";
+    statusEl.textContent = "Signed in.";
+  });
+
+  document.getElementById("btnResendCode").addEventListener("click", () => {
+    document.getElementById("loginForm").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  });
+
+  document.getElementById("btnChangeEmail").addEventListener("click", () => {
+    document.getElementById("otpForm").style.display = "none";
+    document.getElementById("otpStatus").textContent = "";
+    document.getElementById("loginStatus").textContent = "";
+    const emailInput = document.getElementById("loginEmail");
+    emailInput.value = "";
+    emailInput.focus();
   });
 
   document.getElementById("btnSignOut").addEventListener("click", () => supa.auth.signOut());

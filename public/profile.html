@@ -36,9 +36,25 @@
       <button type="submit" class="btn btn-primary auth-submit">Send me a login link</button>
     </form>
     <p id="loginStatus" class="auth-status"></p>
+
+    <!-- Opened from the "Add to Home Screen" icon, tapping the emailed link
+         opens Safari instead of this installed app (an iOS limitation, not
+         something a website can change) — so the same email also includes a
+         6-digit code that can be typed in right here instead. -->
+    <form id="otpForm" class="otp-form" style="display:none;">
+      <label class="auth-field-label" for="otpCode">6-digit code from the email</label>
+      <input type="text" id="otpCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="123456" />
+      <button type="submit" class="btn btn-primary auth-submit">Verify code</button>
+      <div class="otp-links">
+        <button type="button" id="btnResendCode" class="link-btn">Send a new code</button>
+        <button type="button" id="btnChangeEmail" class="link-btn">Use a different email</button>
+      </div>
+    </form>
+    <p id="otpStatus" class="auth-status"></p>
+
     <div class="auth-security-note">
       <span class="auth-security-icon">&#128274;</span>
-      <span>No password to create or remember — we email you a secure, one-time link instead.</span>
+      <span>No password to create or remember — we email you a secure, one-time link and a 6-digit code. Opened this from your home screen icon? Use the code — the link opens in Safari instead.</span>
     </div>
   </div>
 </div>
