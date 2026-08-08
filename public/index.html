@@ -3,8 +3,20 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>KAN Membership Tracker</title>
+<title>KAN Membership</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="profile.css" />
+
+<!-- This is the one link KAN shares with everyone — members and board
+     admins alike. After sign-in the page routes each person to what their
+     email is entitled to see. Also makes "Add to Home Screen" install a
+     KAN-branded icon that opens straight back to this same router. -->
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="assets/kan-icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="KAN" />
+<meta name="theme-color" content="#1b2a55" />
 </head>
 <body>
 
@@ -15,35 +27,50 @@
       <img src="assets/kan-logo.jpg" alt="KAN logo" class="auth-logo" onerror="this.style.display='none'" />
       <div class="auth-brand-text">
         <div class="auth-brand-org">Kerala Association of Nashville</div>
-        <h1>Membership Tracker</h1>
+        <h1>My KAN</h1>
       </div>
     </div>
-    <p class="auth-lede">Sign in with your board email to view and manage member data.</p>
+    <p class="auth-lede">Sign in with your email to view your membership card, or manage member data if you're on the board.</p>
     <form id="loginForm">
       <label class="auth-field-label" for="loginEmail">Email address</label>
       <input type="email" id="loginEmail" placeholder="you@example.com" required />
       <button type="submit" class="btn btn-primary auth-submit">Send me a login link</button>
     </form>
     <p id="loginStatus" class="auth-status"></p>
+
+    <!-- Opened from a home-screen icon, the emailed link opens Safari
+         instead of the installed app (an iOS limitation) — so the same
+         email also includes a code that can be typed in right here. -->
+    <form id="otpForm" class="otp-form" style="display:none;">
+      <label class="auth-field-label" for="otpCode">Code from the email</label>
+      <input type="text" id="otpCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="Enter the code" />
+      <button type="submit" class="btn btn-primary auth-submit">Verify code</button>
+      <div class="otp-links">
+        <button type="button" id="btnResendCode" class="link-btn">Send a new code</button>
+        <button type="button" id="btnChangeEmail" class="link-btn">Use a different email</button>
+      </div>
+    </form>
+    <p id="otpStatus" class="auth-status"></p>
+
     <div class="auth-security-note">
       <span class="auth-security-icon">&#128274;</span>
-      <span>No password to create or remember — we email you a secure, one-time link instead. Only board members added under Manage Access can sign in.</span>
+      <span>No password to create or remember — we email you a secure, one-time link and a code. Opened this from your home screen icon? Use the code — the link opens in Safari instead.</span>
     </div>
   </div>
 </div>
 
-<!-- ================= "NOT ON THE LIST" SCREEN ================= -->
+<!-- ================= "NOT FOUND" SCREEN ================= -->
 <div id="noAccessScreen" class="auth-screen" style="display:none;">
   <div class="auth-card">
     <div class="auth-brand">
       <img src="assets/kan-logo.jpg" alt="KAN logo" class="auth-logo" onerror="this.style.display='none'" />
       <div class="auth-brand-text">
         <div class="auth-brand-org">Kerala Association of Nashville</div>
-        <h1>Access needed</h1>
+        <h1>We couldn't find you</h1>
       </div>
     </div>
-    <p>You're signed in as <strong id="noAccessEmail"></strong>, but this account isn't authorized yet.</p>
-    <p class="hint">Ask an existing admin to add your email from the app's Manage Access screen, then reload this page.</p>
+    <p>You're signed in as <strong id="noAccessEmail"></strong>, but we don't have a KAN membership or board access on file under this email.</p>
+    <p class="hint">If this looks wrong, email <a href="mailto:kantreasurer@gmail.com">kantreasurer@gmail.com</a> so the committee can check the email on your record.</p>
     <button id="btnSignOutNoAccess" class="btn btn-ghost">Sign out</button>
   </div>
 </div>
@@ -61,6 +88,7 @@
   </div>
   <div class="topbar-actions">
     <span class="whoami" id="whoamiLabel"></span>
+    <button id="btnGoToMembership" class="btn btn-outline" style="display:none;">My Membership</button>
     <button id="btnManageAccess" class="btn btn-ghost" style="display:none;">Manage Access</button>
     <button id="btnSendReminders" class="btn btn-secondary">✉ Send Reminders</button>
     <button id="btnAddMember" class="btn btn-primary">+ Add Member</button>
@@ -393,11 +421,147 @@
 
 </div><!-- /appRoot -->
 
+<!-- ============================ MY MEMBERSHIP ============================= -->
+<!-- Shown for anyone with their own member record — board admins who are
+     also members can switch here via "My Membership" above, and back via
+     "Dashboard" below. Regular members land here directly after sign-in. -->
+<div id="memberRoot" style="display:none;">
+
+  <header class="topbar">
+    <div class="topbar-title">
+      <img src="assets/kan-logo.jpg" alt="KAN logo" class="logo-img" onerror="this.style.display='none'" />
+      <div>
+        <h1>My KAN Membership</h1>
+        <p id="memberWhoami"></p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="btnGoToDashboard" class="btn btn-outline" style="display:none;">Dashboard</button>
+      <button id="btnSignOutMember" class="btn btn-ghost">Sign out</button>
+    </div>
+  </header>
+
+  <main class="profile-main">
+
+    <!-- ---- digital ID card ---- -->
+    <section class="card-stage">
+      <div id="idCard" class="id-card">
+        <div class="id-card-header">
+          <img src="assets/kan-logo.jpg" alt="KAN logo" class="id-card-logo" onerror="this.style.display='none'" />
+          <div class="id-card-org">KERALA ASSOCIATION OF NASHVILLE</div>
+          <div class="id-card-sub">DIGITAL MEMBERSHIP CARD</div>
+          <div id="idCardBadge" class="id-card-badge">ACTIVE MEMBER</div>
+        </div>
+
+        <div class="id-card-name" id="idCardName">—</div>
+        <div class="id-card-meta" id="idCardMeta">—</div>
+
+        <div class="id-card-divider"></div>
+
+        <div class="id-card-panel">
+          <div class="id-row"><span class="id-label">Membership Type</span><span class="id-value" id="idType">—</span></div>
+          <div class="id-row"><span class="id-label">Renewed</span><span class="id-value" id="idRenewed">—</span></div>
+          <div class="id-row"><span class="id-label">Last Payment</span><span class="id-value" id="idPayment">—</span></div>
+          <div class="id-row"><span class="id-label">City (USA)</span><span class="id-value" id="idCity">—</span></div>
+          <div class="id-row"><span class="id-label">Native Place</span><span class="id-value" id="idNative">—</span></div>
+          <div class="id-row"><span class="id-label">Family</span><span class="id-value" id="idFamily">—</span></div>
+        </div>
+
+        <div class="id-card-tear"></div>
+        <div class="id-card-footer">
+          <div>
+            <div class="id-footer-label">MEMBER ID</div>
+            <div class="id-footer-id" id="idMemberId">—</div>
+            <div class="id-footer-note">Scan to verify at KAN events</div>
+          </div>
+          <div id="idQr" class="id-qr"></div>
+        </div>
+        <div class="id-card-domain">kan-membership.pages.dev</div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btnAddHome" class="btn btn-outline">Add to Home Screen</button>
+        <button id="btnPrintCard" class="btn btn-outline">Download / Print Card</button>
+      </div>
+      <div id="addHomeHint" class="add-home-hint" style="display:none;">
+        <strong>iPhone (Safari):</strong> tap the Share icon, then "Add to Home Screen".<br/>
+        <strong>Android (Chrome):</strong> tap the ⋮ menu, then "Add to Home screen" / "Install app".
+      </div>
+    </section>
+
+    <!-- ---- renewal status callout ---- -->
+    <section id="renewalNote" class="renewal-note"></section>
+
+    <!-- ---- editable contact info (collapsed by default — card-first view) ---- -->
+    <section class="profile-panel">
+      <button type="button" id="btnToggleEditInfo" class="edit-info-toggle" aria-expanded="false">
+        <span>Edit my info</span><span class="edit-info-chevron">⌄</span>
+      </button>
+      <div id="editInfoBody" style="display:none;">
+        <p class="hint">You can update these yourself. Membership status, type, and renewal details are managed by the KAN committee — email <a href="mailto:kantreasurer@gmail.com">kantreasurer@gmail.com</a> to change those.</p>
+        <form id="profileForm" class="profile-form">
+          <div class="form-row">
+            <label>Email</label>
+            <input type="email" id="mf-email" />
+          </div>
+          <div class="form-row">
+            <label>Phone</label>
+            <input type="text" id="mf-phone" />
+          </div>
+          <div class="form-row">
+            <label>Address</label>
+            <input type="text" id="mf-address" />
+          </div>
+          <div class="form-row">
+            <label>Native Place</label>
+            <input type="text" id="mf-nativePlace" />
+          </div>
+          <div class="form-row">
+            <label>Spouse Name</label>
+            <input type="text" id="mf-spouseName" />
+          </div>
+          <div class="form-row">
+            <label>Children's Names</label>
+            <input type="text" id="mf-childrenNames" />
+          </div>
+          <div class="form-row form-row-full">
+            <label>Notes</label>
+            <textarea id="mf-notes" rows="3"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ---- read-only membership details ---- -->
+    <section class="profile-panel">
+      <h2>Membership Details</h2>
+      <p class="hint">Read-only — contact the committee if any of this needs correcting.</p>
+      <div class="ro-grid">
+        <div><span class="id-label">Name</span><div id="mro-name" class="ro-value">—</div></div>
+        <div><span class="id-label">Status</span><div id="mro-status" class="ro-value">—</div></div>
+        <div><span class="id-label">Type</span><div id="mro-type" class="ro-value">—</div></div>
+        <div><span class="id-label">Category</span><div id="mro-category" class="ro-value">—</div></div>
+        <div><span class="id-label">Renewed Year</span><div id="mro-yearRenewed" class="ro-value">—</div></div>
+        <div><span class="id-label">Last Payment</span><div id="mro-payment" class="ro-value">—</div></div>
+      </div>
+    </section>
+
+    <footer class="profile-footer">
+      Questions about your membership? Email <a href="mailto:kantreasurer@gmail.com">kantreasurer@gmail.com</a>.
+    </footer>
+  </main>
+</div><!-- /memberRoot -->
+
 <script src="lib/supabase.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/chart.min.js"></script>
 <script src="lib/d3.min.js"></script>
 <script src="lib/place-utils.js"></script>
+<script src="lib/member-portal.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>

@@ -142,6 +142,12 @@
   line-height: 1.6;
 }
 
+.card-edit-link {
+  align-self: center;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* ---------------- renewal callout ---------------- */
 
 .renewal-note {
@@ -166,6 +172,23 @@
 }
 .profile-panel h2 { margin: 0 0 6px; font-size: 17px; color: var(--primary); }
 .profile-panel .hint { margin-top: 0; margin-bottom: 16px; }
+
+.edit-info-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+.edit-info-toggle[aria-expanded="true"] .edit-info-chevron { transform: rotate(180deg); }
+.edit-info-chevron { font-size: 18px; color: var(--muted); transition: transform 0.15s ease; }
+#editInfoBody { margin-top: 16px; }
 
 .profile-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
 .form-row { display: flex; flex-direction: column; gap: 6px; }

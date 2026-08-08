@@ -11,6 +11,9 @@ const SENDER_EMAIL = "manish.ravikumar@gmail.com"; // shown as the "From" on rem
 let supa = null;          // supabase client
 let currentUser = null;   // { email }
 let isAdmin = false;
+let myMemberRecord = null; // MemberPortal.rowToMember() shape, if this email also has a member row
+let memberRootRendered = false; // avoid re-rendering the card/form every time someone switches views
+let currentRoot = null;    // "app" | "member" — which root is on screen, for people who have both
 
 let members = [];          // full in-memory dataset (camelCase, mirrors the local app's shape)
 let sortState = { field: "name", dir: "asc" };
@@ -1282,30 +1285,72 @@ async function checkAccess(email) {
   return data;
 }
 
+async function findMyMemberRecord() {
+  const { data: memberId, error: linkErr } = await supa.rpc("link_my_member_record");
+  if (linkErr) { console.error("link_my_member_record failed:", linkErr); return null; }
+  if (!memberId) return null;
+  const { data, error } = await supa.from("members").select("*").eq("id", memberId).maybeSingle();
+  if (error || !data) { console.error("Could not load member row:", error); return null; }
+  return MemberPortal.rowToMember(data);
+}
+
+function renderMemberRootIfNeeded() {
+  if (!myMemberRecord || memberRootRendered) return;
+  MemberPortal.renderAll(myMemberRecord);
+  memberRootRendered = true;
+}
+
+function showRoot(which) {
+  // which: "app" | "member". Only one of these two is ever visible at a
+  // time — the nav buttons let anyone with both kinds of access switch.
+  currentRoot = which;
+  document.getElementById("appRoot").style.display = which === "app" ? "block" : "none";
+  document.getElementById("memberRoot").style.display = which === "member" ? "block" : "none";
+  if (which === "member") renderMemberRootIfNeeded();
+}
+
 async function handleAuthedSession(session) {
   currentUser = { email: session.user.email };
-  const access = await checkAccess(currentUser.email);
-  if (!access) {
+
+  const [access, memberRecord] = await Promise.all([
+    checkAccess(currentUser.email),
+    findMyMemberRecord(),
+  ]);
+  myMemberRecord = memberRecord;
+  memberRootRendered = false;
+
+  if (!access && !myMemberRecord) {
     document.getElementById("loginScreen").style.display = "none";
     document.getElementById("appRoot").style.display = "none";
+    document.getElementById("memberRoot").style.display = "none";
     document.getElementById("noAccessScreen").style.display = "flex";
     document.getElementById("noAccessEmail").textContent = currentUser.email;
     return;
   }
-  isAdmin = !!access.is_admin;
-  currentUser.name = access.name || null;
-  currentUser.position = access.position || null;
+
+  isAdmin = !!(access && access.is_admin);
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("noAccessScreen").style.display = "none";
-  document.getElementById("appRoot").style.display = "block";
-  document.getElementById("whoamiLabel").textContent = currentUser.name
-    ? currentUser.name + (currentUser.position ? " — " + currentUser.position : "")
-    : currentUser.email; // fall back to email only until this person's profile is filled in from Manage Access
-  document.getElementById("btnManageAccess").style.display = isAdmin ? "inline-block" : "none";
-  document.getElementById("btnAddMember").style.display = isAdmin ? "inline-block" : "none";
 
-  await loadAllData();
-  render();
+  if (access) {
+    currentUser.name = access.name || null;
+    currentUser.position = access.position || null;
+    document.getElementById("whoamiLabel").textContent = currentUser.name
+      ? currentUser.name + (currentUser.position ? " — " + currentUser.position : "")
+      : currentUser.email; // fall back to email only until this person's profile is filled in from Manage Access
+    document.getElementById("btnManageAccess").style.display = isAdmin ? "inline-block" : "none";
+    document.getElementById("btnAddMember").style.display = isAdmin ? "inline-block" : "none";
+    document.getElementById("btnGoToMembership").style.display = myMemberRecord ? "inline-block" : "none";
+    document.getElementById("btnGoToDashboard").style.display = "inline-block"; // only reachable if access exists
+
+    await loadAllData();
+    render();
+    showRoot("app"); // board members land on the dashboard by default
+  } else {
+    // Member only, no board access — straight to the card, no dashboard to offer.
+    document.getElementById("btnGoToDashboard").style.display = "none";
+    showRoot("member");
+  }
 }
 
 async function initAuth() {
@@ -1321,7 +1366,10 @@ async function initAuth() {
       await handleAuthedSession(session);
     } else {
       currentUser = null;
+      myMemberRecord = null;
+      memberRootRendered = false;
       document.getElementById("appRoot").style.display = "none";
+      document.getElementById("memberRoot").style.display = "none";
       document.getElementById("noAccessScreen").style.display = "none";
       document.getElementById("loginScreen").style.display = "flex";
     }
@@ -1336,22 +1384,127 @@ function attachEvents() {
     const email = document.getElementById("loginEmail").value.trim();
     const statusEl = document.getElementById("loginStatus");
     const submitBtn = document.querySelector("#loginForm button[type=submit]");
+    const otpForm = document.getElementById("otpForm");
+    const otpStatusEl = document.getElementById("otpStatus");
     statusEl.className = "auth-status";
     statusEl.textContent = "Sending your login link…";
+    otpStatusEl.textContent = "";
     submitBtn.disabled = true;
     const { error } = await supa.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     submitBtn.disabled = false;
     if (error) {
       statusEl.className = "auth-status auth-status-error";
       statusEl.textContent = "Couldn't send the link: " + error.message;
+      otpForm.style.display = "none";
     } else {
       statusEl.className = "auth-status auth-status-ok";
-      statusEl.textContent = `Check ${email} for your login link. It may take a minute to arrive — check spam too.`;
+      statusEl.textContent = `Check ${email} for your login link and code. It may take a minute to arrive — check spam too.`;
+      // The link only works from a regular browser tab — on a home-screen
+      // icon it opens Safari instead (an iOS limitation), so surface the
+      // code entry step every time a link is sent, not just on request.
+      otpForm.style.display = "flex";
+      const codeInput = document.getElementById("otpCode");
+      codeInput.value = "";
+      codeInput.focus();
     }
+  });
+
+  document.getElementById("otpForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("loginEmail").value.trim();
+    const code = document.getElementById("otpCode").value.trim();
+    const statusEl = document.getElementById("otpStatus");
+    const submitBtn = document.querySelector("#otpForm button[type=submit]");
+    if (!code) return;
+    statusEl.className = "auth-status";
+    statusEl.textContent = "Verifying…";
+    submitBtn.disabled = true;
+    const { error } = await supa.auth.verifyOtp({ email, token: code, type: "email" });
+    submitBtn.disabled = false;
+    if (error) {
+      statusEl.className = "auth-status auth-status-error";
+      statusEl.textContent = "That code didn't work: " + error.message;
+      return;
+    }
+    // On success this sets the session, which fires onAuthStateChange below
+    // and takes over — no manual redirect needed.
+    statusEl.className = "auth-status auth-status-ok";
+    statusEl.textContent = "Signed in.";
+  });
+
+  document.getElementById("btnResendCode").addEventListener("click", () => {
+    document.getElementById("loginForm").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  });
+
+  document.getElementById("btnChangeEmail").addEventListener("click", () => {
+    document.getElementById("otpForm").style.display = "none";
+    document.getElementById("otpStatus").textContent = "";
+    document.getElementById("loginStatus").textContent = "";
+    const emailInput = document.getElementById("loginEmail");
+    emailInput.value = "";
+    emailInput.focus();
   });
 
   document.getElementById("btnSignOut").addEventListener("click", () => supa.auth.signOut());
   document.getElementById("btnSignOutNoAccess").addEventListener("click", () => supa.auth.signOut());
+  document.getElementById("btnSignOutMember").addEventListener("click", () => supa.auth.signOut());
+
+  // ---- switching between dashboard and member card, for people who have both ----
+  document.getElementById("btnGoToMembership").addEventListener("click", () => showRoot("member"));
+  document.getElementById("btnGoToDashboard").addEventListener("click", () => showRoot("app"));
+
+  // ---- member card page (Add to Home Screen / print / edit-info toggle / save) ----
+  document.getElementById("btnAddHome").addEventListener("click", () => {
+    const hint = document.getElementById("addHomeHint");
+    hint.style.display = hint.style.display === "none" ? "block" : "none";
+  });
+  document.getElementById("btnPrintCard").addEventListener("click", () => window.print());
+
+  document.getElementById("btnToggleEditInfo").addEventListener("click", () => {
+    const btn = document.getElementById("btnToggleEditInfo");
+    const body = document.getElementById("editInfoBody");
+    const expanded = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!expanded));
+    body.style.display = expanded ? "none" : "block";
+  });
+
+  document.getElementById("profileForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!myMemberRecord) return;
+    const statusEl = document.getElementById("saveStatus");
+    const submitBtn = document.querySelector("#profileForm button[type=submit]");
+    const formValues = {
+      email: document.getElementById("mf-email").value.trim(),
+      phone: document.getElementById("mf-phone").value.trim(),
+      address: document.getElementById("mf-address").value.trim(),
+      nativePlace: document.getElementById("mf-nativePlace").value.trim(),
+      spouseName: document.getElementById("mf-spouseName").value.trim(),
+      childrenNames: document.getElementById("mf-childrenNames").value.trim(),
+      notes: document.getElementById("mf-notes").value.trim(),
+    };
+
+    submitBtn.disabled = true;
+    statusEl.className = "save-status";
+    statusEl.textContent = "Saving…";
+
+    const { error } = await supa
+      .from("members")
+      .update(MemberPortal.editableRowPayload(formValues))
+      .eq("id", myMemberRecord.id);
+
+    submitBtn.disabled = false;
+    if (error) {
+      statusEl.className = "save-status error";
+      statusEl.textContent = "Couldn't save: " + error.message;
+      return;
+    }
+
+    myMemberRecord = { ...myMemberRecord, ...formValues };
+    statusEl.className = "save-status ok";
+    statusEl.textContent = "Saved.";
+    MemberPortal.renderCard(myMemberRecord); // City/Native Place/Family on the card can change
+    setTimeout(() => { statusEl.textContent = ""; }, 4000);
+  });
 
   document.getElementById("btnAddMember").addEventListener("click", () => openModal(null));
   document.getElementById("modalClose").addEventListener("click", closeModal);
