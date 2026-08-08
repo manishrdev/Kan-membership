@@ -1,0 +1,14 @@
+{
+  "name": "KAN Membership Card",
+  "short_name": "KAN ID",
+  "description": "Kerala Association of Nashville — digital membership card",
+  "start_url": "profile.html",
+  "scope": "profile.html",
+  "display": "standalone",
+  "background_color": "#f5f6fa",
+  "theme_color": "#1b2a55",
+  "icons": [
+    { "src": "assets/kan-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/kan-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
