@@ -11,6 +11,8 @@
 
 create table if not exists allowed_users (
   email      text primary key,
+  name       text,          -- display name, shown in the header instead of the raw email
+  position   text,          -- board title, e.g. "President", "Treasurer", "Membership Committee"
   is_admin   boolean not null default false,
   added_by   text,
   added_at   timestamptz not null default now()
@@ -29,21 +31,42 @@ create policy "allowed_users: any authenticated user can read"
   on allowed_users for select
   using (auth.role() = 'authenticated');
 
--- Only existing admins can add/remove/edit rows.
-create policy "allowed_users: only admins can write"
-  on allowed_users for all
-  using (
-    exists (
-      select 1 from allowed_users au
-      where au.email = auth.email() and au.is_admin = true
-    )
-  )
-  with check (
-    exists (
-      select 1 from allowed_users au
-      where au.email = auth.email() and au.is_admin = true
-    )
+-- Admin check used by the write policies below. This has to be a SECURITY
+-- DEFINER function rather than a plain subquery directly inside the policy:
+-- a subquery against allowed_users would itself be subject to allowed_users'
+-- own RLS policies, which would need to re-evaluate this same policy to
+-- decide — infinite recursion (Postgres error 42P17). A SECURITY DEFINER
+-- function runs with the privileges of its owner and bypasses RLS internally,
+-- breaking that loop.
+create or replace function is_kan_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from allowed_users au
+    where au.email = auth.email() and au.is_admin = true
   );
+$$;
+
+-- Only existing admins can add/remove/edit rows. (Deliberately split into
+-- insert/update/delete rather than "for all" — "for all" would also apply
+-- to select, and even via the function that's unnecessary overhead for the
+-- plain read policy above.)
+create policy "allowed_users: admins can insert"
+  on allowed_users for insert
+  with check (is_kan_admin());
+
+create policy "allowed_users: admins can update"
+  on allowed_users for update
+  using (is_kan_admin())
+  with check (is_kan_admin());
+
+create policy "allowed_users: admins can delete"
+  on allowed_users for delete
+  using (is_kan_admin());
 
 -- ============================================================
 -- 2. MEMBERS

@@ -14,7 +14,9 @@ kan-hosted/
 │   ├── app.js
 │   ├── style.css
 │   ├── config.js               ← paste your Supabase URL + anon key here
-│   ├── lib/                    ← bundled libraries (Supabase client, SheetJS for Excel)
+│   ├── lib/                    ← bundled libraries (Supabase client, SheetJS for Excel, Chart.js)
+│   ├── assets/
+│   │   └── kan-logo.jpg        ← put your logo here to show it in the header
 │   └── data/
 │       └── members_seed_for_import.json   ← your existing 263 members, for the one-time import
 └── supabase/
@@ -25,6 +27,16 @@ kan-hosted/
         └── send-email/
             └── index.ts        ← the server-side function that actually sends reminder emails
 ```
+
+## Dashboard
+
+The top of the app shows two charts (Chart.js, bundled in `public/lib/chart.min.js`):
+- **Membership Overview** — a donut chart of Active / Renewal Due / Long Lapsed / Moved Out, with the total in the center. Hover a segment for its count, click to filter the table below.
+- **Member Locations** — a bar chart toggled between India (from each member's Native Place) and USA (parsed from each member's Address). Place names are collated so "Kochi" and "Kochi, Kerala" count as the same place.
+
+"Moved Out" is a new option in the Status dropdown, alongside Life/Annual/Biennial/Expired/Lapsed — mark a member Moved Out the same way you'd mark them Lapsed.
+
+To show your KAN logo in the header, save it as `public/assets/kan-logo.jpg` (roughly square works best) and redeploy.
 
 ## What's different from the local (offline) version
 

@@ -64,6 +64,50 @@ Do these in order. Each step says exactly what to click and exactly where the re
 
 ---
 
+## Update: member self-service portal + digital ID card
+
+Every KAN member (not just board members in Manage Access) can sign in with
+their own email, see only their own record, edit their own contact info,
+and view/print a digital membership card that's green when Active and red
+otherwise.
+
+**One link for everyone.** `index.html` is now the single URL you share
+with anyone — board members and regular members alike. After sign-in, it
+routes each person automatically: board members land on the admin
+dashboard, regular members land on their card, and anyone who's both (e.g.
+a board member who's also a KAN member) lands on the dashboard with a "My
+Membership" button to switch over, and a "Dashboard" button to switch back.
+See `PROFILE_PORTAL_STEP_BY_STEP.md` for the full detail — the short
+version below is enough to deploy it.
+
+To turn it on:
+
+1. In Supabase → **SQL Editor → New query**, paste in and run
+   `supabase/migrations/006_member_self_service.sql`. Safe to run even
+   though the app is already live — it only adds a new column, a new
+   function, and new policies; it doesn't touch existing data or policies.
+2. Push the updated `public/` folder the same way you deployed
+   originally — commit and push to the GitHub repo connected to Cloudflare
+   Pages.
+3. Share **one link** with everyone: `<your-site>.pages.dev/` (or
+   `/index.html`). Members sign in with the email already on their
+   membership record. If a member's email isn't on file (or is spelled
+   differently there), they'll see a "we couldn't find you" screen telling
+   them to email the treasurer — that's expected until their record's email
+   matches what they log in with.
+4. On a phone, opening that link and using the browser's "Add to Home
+   Screen" gives everyone an app-like icon using the KAN logo, which always
+   opens back to this same router — no separate links to keep track of.
+
+Old links to `profile.html` or `card.html`, if anyone still has them saved,
+automatically redirect to `index.html` — they still work, just land on the
+unified page now.
+
+A member can only ever edit: email, phone, address, native place, spouse
+name, children's names, notes. Status, type, category, renewal date, and
+name are enforced read-only at the database level (not just hidden in the
+UI) — even a direct API call from a member's own login can't change them.
+
 ## When you get stuck
 
 Paste me the exact error message (from the browser console, Supabase logs, or Cloudflare's deploy log) at whatever step you're on, and I'll help you fix it — I just can't click through the account-creation screens themselves on your behalf.

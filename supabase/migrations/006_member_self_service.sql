@@ -57,6 +57,12 @@ begin
 end;
 $$;
 
+-- CREATE FUNCTION does not by itself let signed-in members call this — the
+-- authenticated role needs explicit EXECUTE, or every call fails with a
+-- permission error before the linking logic ever runs (which the app
+-- quietly treats the same as "no matching member," masking the real cause).
+grant execute on function link_my_member_record() to authenticated;
+
 -- ============================================================
 -- 3. RLS: members can read + update their own row.
 -- ============================================================
@@ -83,6 +89,20 @@ create policy "members: self can update own row"
 -- effect on the contact-info columns (email, phone, address, spouse_name,
 -- children_names, native_place, notes). Admin edits via the dashboard are
 -- unaffected — is_kan_admin() is true there, so nothing gets reverted.
+-- NOTE: auth_user_id is deliberately NOT in this reset list. It's tempting
+-- to include it (it looks like "just another column a member shouldn't be
+-- able to change"), but doing so silently breaks first-time self-service
+-- linking entirely: link_my_member_record() sets auth_user_id via an
+-- UPDATE, and since a linking member is by definition not yet an admin,
+-- this trigger would revert that same UPDATE back to null in the same
+-- statement — the row would still get *found* (id comes back fine) but
+-- never actually get linked. It's already safe to leave unprotected here:
+-- the "members: self can update own row" RLS policy requires
+-- auth_user_id = auth.uid() before ANY update is allowed at all, so a
+-- member can never reach this trigger for a row that isn't already theirs
+-- via the normal update path — only link_my_member_record()'s
+-- SECURITY DEFINER context (itself gated on auth_user_id is null AND a
+-- verified email match) can ever set it in the first place.
 create or replace function protect_admin_only_member_fields()
 returns trigger
 language plpgsql
@@ -99,7 +119,6 @@ begin
     new.attended_2026_new_year := old.attended_2026_new_year;
     new.event_2026_payment := old.event_2026_payment;
     new.event_2026_member_status := old.event_2026_member_status;
-    new.auth_user_id := old.auth_user_id;
   end if;
   return new;
 end;
