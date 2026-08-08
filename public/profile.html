@@ -42,8 +42,8 @@
          something a website can change) — so the same email also includes a
          6-digit code that can be typed in right here instead. -->
     <form id="otpForm" class="otp-form" style="display:none;">
-      <label class="auth-field-label" for="otpCode">6-digit code from the email</label>
-      <input type="text" id="otpCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="123456" />
+      <label class="auth-field-label" for="otpCode">Code from the email</label>
+      <input type="text" id="otpCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="Enter the code" />
       <button type="submit" class="btn btn-primary auth-submit">Verify code</button>
       <div class="otp-links">
         <button type="button" id="btnResendCode" class="link-btn">Send a new code</button>
