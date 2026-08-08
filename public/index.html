@@ -87,12 +87,23 @@
     </div>
   </div>
   <div class="topbar-actions">
-    <span class="whoami" id="whoamiLabel"></span>
-    <button id="btnGoToMembership" class="btn btn-outline" style="display:none;">My Membership</button>
-    <button id="btnManageAccess" class="btn btn-ghost" style="display:none;">Manage Access</button>
     <button id="btnSendReminders" class="btn btn-secondary">✉ Send Reminders</button>
     <button id="btnAddMember" class="btn btn-primary">+ Add Member</button>
-    <button id="btnSignOut" class="btn btn-ghost">Sign out</button>
+    <div class="user-menu-wrap">
+      <button id="userMenuTrigger" type="button" class="user-chip" aria-expanded="false">
+        <span class="user-chip-avatar" id="userChipAvatar">—</span>
+        <span class="user-chip-text">
+          <span class="user-chip-name" id="whoamiLabel"></span>
+          <span class="user-chip-role" id="whoamiRole"></span>
+        </span>
+        <span class="user-chip-chevron">⌄</span>
+      </button>
+      <div id="userMenuDropdown" class="user-menu-dropdown" style="display:none;">
+        <button type="button" id="btnGoToMembership" class="user-menu-item" style="display:none;">My Membership</button>
+        <button type="button" id="btnManageAccess" class="user-menu-item" style="display:none;">Manage Access</button>
+        <button type="button" id="btnSignOut" class="user-menu-item user-menu-item-danger">Sign out</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -436,8 +447,19 @@
       </div>
     </div>
     <div class="topbar-actions">
-      <button id="btnGoToDashboard" class="btn btn-outline" style="display:none;">Dashboard</button>
-      <button id="btnSignOutMember" class="btn btn-ghost">Sign out</button>
+      <div class="user-menu-wrap">
+        <button id="memberUserMenuTrigger" type="button" class="user-chip" aria-expanded="false">
+          <span class="user-chip-avatar" id="memberChipAvatar">—</span>
+          <span class="user-chip-text">
+            <span class="user-chip-name" id="memberChipName"></span>
+          </span>
+          <span class="user-chip-chevron">⌄</span>
+        </button>
+        <div id="memberUserMenuDropdown" class="user-menu-dropdown" style="display:none;">
+          <button type="button" id="btnGoToDashboard" class="user-menu-item" style="display:none;">Dashboard</button>
+          <button type="button" id="btnSignOutMember" class="user-menu-item user-menu-item-danger">Sign out</button>
+        </div>
+      </div>
     </div>
   </header>
 

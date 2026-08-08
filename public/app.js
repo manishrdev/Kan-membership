@@ -1300,6 +1300,29 @@ function renderMemberRootIfNeeded() {
   memberRootRendered = true;
 }
 
+function closeAllUserMenus() {
+  document.querySelectorAll(".user-menu-dropdown").forEach(d => { d.style.display = "none"; });
+  document.querySelectorAll(".user-chip").forEach(b => b.setAttribute("aria-expanded", "false"));
+}
+
+function wireUserMenu(triggerId, dropdownId) {
+  const trigger = document.getElementById(triggerId);
+  const dropdown = document.getElementById(dropdownId);
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = dropdown.style.display === "block";
+    closeAllUserMenus();
+    if (!wasOpen) {
+      dropdown.style.display = "block";
+      trigger.setAttribute("aria-expanded", "true");
+    }
+  });
+  dropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.target.classList.contains("user-menu-item")) closeAllUserMenus();
+  });
+}
+
 function showRoot(which) {
   // which: "app" | "member". Only one of these two is ever visible at a
   // time — the nav buttons let anyone with both kinds of access switch.
@@ -1332,16 +1355,23 @@ async function handleAuthedSession(session) {
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("noAccessScreen").style.display = "none";
 
+  // Same person, same name chip on either page — populate both up front so
+  // switching between dashboard and card is instant, no re-render needed.
+  const displayName = (access && access.name) || (myMemberRecord && myMemberRecord.name) || currentUser.email;
+  const initials = initialsFor(displayName);
+  document.getElementById("userChipAvatar").textContent = initials;
+  document.getElementById("whoamiLabel").textContent = displayName;
+  document.getElementById("whoamiRole").textContent = (access && access.position) || "";
+  document.getElementById("memberChipAvatar").textContent = initials;
+  document.getElementById("memberChipName").textContent = displayName;
+
   if (access) {
     currentUser.name = access.name || null;
     currentUser.position = access.position || null;
-    document.getElementById("whoamiLabel").textContent = currentUser.name
-      ? currentUser.name + (currentUser.position ? " — " + currentUser.position : "")
-      : currentUser.email; // fall back to email only until this person's profile is filled in from Manage Access
-    document.getElementById("btnManageAccess").style.display = isAdmin ? "inline-block" : "none";
+    document.getElementById("btnManageAccess").style.display = isAdmin ? "block" : "none";
     document.getElementById("btnAddMember").style.display = isAdmin ? "inline-block" : "none";
-    document.getElementById("btnGoToMembership").style.display = myMemberRecord ? "inline-block" : "none";
-    document.getElementById("btnGoToDashboard").style.display = "inline-block"; // only reachable if access exists
+    document.getElementById("btnGoToMembership").style.display = myMemberRecord ? "block" : "none";
+    document.getElementById("btnGoToDashboard").style.display = "block"; // only reachable if access exists
 
     await loadAllData();
     render();
@@ -1351,6 +1381,15 @@ async function handleAuthedSession(session) {
     document.getElementById("btnGoToDashboard").style.display = "none";
     showRoot("member");
   }
+}
+
+function initialsFor(name) {
+  if (!name) return "?";
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  const first = parts[0][0] || "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase() || "?";
 }
 
 async function initAuth() {
@@ -1452,6 +1491,12 @@ function attachEvents() {
   // ---- switching between dashboard and member card, for people who have both ----
   document.getElementById("btnGoToMembership").addEventListener("click", () => showRoot("member"));
   document.getElementById("btnGoToDashboard").addEventListener("click", () => showRoot("app"));
+
+  // ---- name-chip dropdown menus (dashboard + member page) ----
+  wireUserMenu("userMenuTrigger", "userMenuDropdown");
+  wireUserMenu("memberUserMenuTrigger", "memberUserMenuDropdown");
+  document.addEventListener("click", () => closeAllUserMenus());
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllUserMenus(); });
 
   // ---- member card page (Add to Home Screen / print / edit-info toggle / save) ----
   document.getElementById("btnAddHome").addEventListener("click", () => {
